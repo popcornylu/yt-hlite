@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block title %}TT Highlights - Home{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>Table Tennis Highlight Generator</h1>
+    <p class="subtitle">Upload your video and let's create an amazing highlight reel together</p>
+</div>
+
+{% if error %}
+<div class="alert alert-error">
+    {{ error }}
+</div>
+{% endif %}
+
+{% if has_video %}
+<div class="card">
+    <h2>Current Video</h2>
+    <div class="video-info">
+        <span class="video-icon">📹</span>
+        <span class="video-name">{{ video_name }}</span>
+    </div>
+    <div class="button-group">
+        <a href="{{ url_for('timeline') }}" class="btn btn-primary">Continue to Analysis</a>
+        <button onclick="showUploadForm()" class="btn btn-secondary">Upload Different Video</button>
+    </div>
+</div>
+{% endif %}
+
+<div class="card {% if has_video %}hidden{% endif %}" id="upload-card">
+    <h2>Upload Video</h2>
+    <form id="upload-form" enctype="multipart/form-data">
+        <div class="upload-area" id="drop-zone">
+            <div class="upload-icon">📤</div>
+            <p>Drag and drop your video here</p>
+            <p class="upload-hint">or click to select a file</p>
+            <input type="file" id="video-input" name="video" accept="video/*,.mov,.mp4,.avi,.mkv,.webm" hidden>
+        </div>
+        <div id="file-info" class="hidden">
+            <span id="file-name"></span>
+            <button type="button" onclick="clearFile()" class="btn-icon">✕</button>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="upload-btn" disabled>
+            Upload and Analyze
+        </button>
+    </form>
+    <div id="upload-progress" class="hidden">
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <p id="progress-text">Uploading...</p>
+    </div>
+</div>
+
+<div class="workflow-steps">
+    <h2>How It Works</h2>
+    <div class="steps-grid">
+        <div class="step">
+            <div class="step-number">1</div>
+            <h3>Upload</h3>
+            <p>Upload your table tennis match video</p>
+        </div>
+        <div class="step">
+            <div class="step-number">2</div>
+            <h3>Analyze</h3>
+            <p>AI detects rallies and exciting moments</p>
+        </div>
+        <div class="step">
+            <div class="step-number">3</div>
+            <h3>Review</h3>
+            <p>Confirm, adjust, and rate highlights</p>
+        </div>
+        <div class="step">
+            <div class="step-number">4</div>
+            <h3>Export</h3>
+            <p>Generate your highlight reel</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('video-input');
+const fileInfo = document.getElementById('file-info');
+const fileName = document.getElementById('file-name');
+const uploadBtn = document.getElementById('upload-btn');
+const uploadForm = document.getElementById('upload-form');
+const uploadProgress = document.getElementById('upload-progress');
+const progressFill = document.getElementById('progress-fill');
+const progressText = document.getElementById('progress-text');
+
+// Store the selected file (needed for drag-and-drop)
+let selectedFile = null;
+
+// Drag and drop handlers
+dropZone.addEventListener('click', () => fileInput.click());
+
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+});
+
+dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('drag-over');
+});
+
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        // Accept any video file (mov, mp4, avi, etc.)
+        const file = files[0];
+        if (file.type.startsWith('video/') || file.name.match(/\.(mov|mp4|avi|mkv|webm)$/i)) {
+            handleFile(file);
+        } else {
+            alert('Please select a video file');
+        }
+    }
+});
+
+fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+    }
+});
+
+function handleFile(file) {
+    selectedFile = file;
+    fileName.textContent = file.name;
+    fileInfo.classList.remove('hidden');
+    dropZone.classList.add('hidden');
+    uploadBtn.disabled = false;
+}
+
+function clearFile() {
+    selectedFile = null;
+    fileInput.value = '';
+    fileInfo.classList.add('hidden');
+    dropZone.classList.remove('hidden');
+    uploadBtn.disabled = true;
+}
+
+function showUploadForm() {
+    document.getElementById('upload-card').classList.remove('hidden');
+}
+
+uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    // Use selectedFile (works for both drag-drop and file picker)
+    const fileToUpload = selectedFile || fileInput.files[0];
+
+    if (!fileToUpload) {
+        alert('Please select a video file first');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('video', fileToUpload);
+
+    uploadProgress.classList.remove('hidden');
+    uploadBtn.disabled = true;
+
+    try {
+        const response = await fetch('/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            progressText.textContent = 'Upload complete! Redirecting...';
+            progressFill.style.width = '100%';
+            setTimeout(() => {
+                window.location.href = data.redirect;
+            }, 500);
+        } else {
+            throw new Error(data.error || 'Upload failed');
+        }
+    } catch (error) {
+        progressText.textContent = 'Error: ' + error.message;
+        progressFill.classList.add('error');
+        uploadBtn.disabled = false;
+    }
+});
+</script>
+{% endblock %}
