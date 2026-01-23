@@ -2,6 +2,8 @@
 
 import os
 import json
+import subprocess
+import platform
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, send_file, url_for
 
@@ -110,15 +112,62 @@ def create_app(
 
     @app.route("/set-video", methods=["POST"])
     def set_video():
-        """Set video path directly (for CLI usage)."""
+        """Set video path directly (for local file selection)."""
         data = request.get_json()
-        video_path = data.get("video_path")
+        video_path = data.get("path") or data.get("video_path")
 
-        if not video_path or not Path(video_path).exists():
-            return jsonify({"error": "Invalid video path"}), 400
+        if not video_path:
+            return jsonify({"error": "No path provided"}), 400
+
+        # Expand ~ and resolve path
+        video_path = str(Path(video_path).expanduser().resolve())
+
+        if not Path(video_path).exists():
+            return jsonify({"error": f"File not found: {video_path}"}), 400
+
+        if not Path(video_path).is_file():
+            return jsonify({"error": f"Not a file: {video_path}"}), 400
 
         app.config["VIDEO_PATH"] = video_path
-        return jsonify({"success": True})
+        return jsonify({
+            "success": True,
+            "video_path": video_path,
+            "redirect": url_for("candidates"),
+        })
+
+    @app.route("/browse-video")
+    def browse_video():
+        """Open native file picker dialog (macOS only)."""
+        if platform.system() != "Darwin":
+            return jsonify({"error": "Native file picker only available on macOS"}), 400
+
+        # AppleScript to open file picker - can access Photos library
+        script = '''
+        tell application "System Events"
+            activate
+        end tell
+        set videoFile to choose file with prompt "Select a video file" of type {"public.movie", "com.apple.quicktime-movie", "public.mpeg-4", "public.avi"}
+        return POSIX path of videoFile
+        '''
+
+        try:
+            result = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True,
+                text=True,
+                timeout=120  # 2 minute timeout for user to select
+            )
+
+            if result.returncode == 0 and result.stdout.strip():
+                return jsonify({"path": result.stdout.strip()})
+            else:
+                # User cancelled or error
+                return jsonify({"error": "No file selected", "cancelled": True})
+
+        except subprocess.TimeoutExpired:
+            return jsonify({"error": "File picker timed out"}), 408
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
     @app.route("/timeline")
     def timeline():
