@@ -836,14 +836,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Recapture focus from YouTube iframe so keyboard shortcuts work
     if (isYouTube) {
-        window.addEventListener('blur', () => {
-            // When iframe steals focus, take it back after a short delay
-            setTimeout(() => {
-                if (document.activeElement && document.activeElement.tagName === 'IFRAME') {
-                    document.activeElement.blur();
-                    document.body.focus();
-                }
-            }, 50);
+        // Recapture focus from iframe on any click outside the iframe
+        document.addEventListener('click', () => {
+            if (document.activeElement && document.activeElement.tagName === 'IFRAME') {
+                document.activeElement.blur();
+                document.body.focus();
+            }
         });
     }
 
