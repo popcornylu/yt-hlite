@@ -3,18 +3,6 @@
 {% block title %}YouTube Highlights - Editor{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div class="header-left">
-        <h1>Highlight Editor</h1>
-        <p>Press <kbd>[</kbd> to start, <kbd>]</kbd> to end a highlight</p>
-    </div>
-    <div class="header-right">
-        <button id="auto-detect-btn" class="btn btn-secondary" onclick="autoDetectHighlights()">
-            Auto-detect Highlights
-        </button>
-    </div>
-</div>
-
 <!-- Main Layout -->
 <div class="editor-layout" id="editor-layout">
     <!-- Video Player Section -->
@@ -60,10 +48,18 @@
 <!-- Timeline Section - fixed at bottom -->
 <div class="timeline-section">
     <div class="timeline-header">
-        <h3>Timeline</h3>
+        <div class="timeline-header-left">
+            <span class="timeline-stats" id="timeline-stats">0 highlights (0:00)</span>
+            <button id="auto-detect-btn" class="btn btn-secondary btn-sm" onclick="autoDetectHighlights()">
+                Auto-detect
+            </button>
+        </div>
         <div class="timeline-info">
             <span>1 inch = 5 seconds</span>
             <span id="timeline-duration">Duration: 0:00</span>
+            <a href="{{ url_for('preview') }}" class="btn btn-primary btn-sm" id="continue-btn">
+                Preview →
+            </a>
         </div>
     </div>
     <div class="timeline-scroll-container" id="timeline-scroll">
@@ -88,29 +84,25 @@
     <div class="shortcuts-grid">
         <div><kbd>[</kbd></div><div>Set highlight start</div>
         <div><kbd>]</kbd></div><div>Set highlight end</div>
+        <div><kbd>\</kbd></div><div>Cancel highlight start</div>
         <div><kbd>←</kbd> <kbd>→</kbd></div><div>Jump ±5 seconds</div>
         <div><kbd>z</kbd> <kbd>x</kbd></div><div>Jump ±2 seconds</div>
-        <div><kbd>⌘</kbd><kbd>[</kbd></div><div>Previous highlight</div>
-        <div><kbd>⌘</kbd><kbd>]</kbd></div><div>Next highlight</div>
+        <div><kbd>↑</kbd> <kbd>↓</kbd></div><div>Prev / Next highlight</div>
+        <div><kbd>⌘</kbd><kbd>↑</kbd> <kbd>⌘</kbd><kbd>↓</kbd></div><div>First / Last highlight</div>
         <div><kbd>Space</kbd></div><div>Play / Pause</div>
         <div><kbd>d</kbd></div><div>Speed +0.1x</div>
         <div><kbd>s</kbd></div><div>Speed −0.1x</div>
         <div><kbd>r</kbd></div><div>Toggle 1x / 2x</div>
-        <div><kbd>Tab</kbd></div><div>Toggle timeline zoom</div>
+        <div><kbd>t</kbd></div><div>Cycle timeline: hide / full / zoom</div>
+        <div><kbd>h</kbd></div><div>Toggle highlights panel</div>
         <div><kbd>Delete</kbd></div><div>Delete selected highlight</div>
     </div>
 </div>
 
-<!-- Sticky Footer -->
-<div class="sticky-footer">
-    <div class="footer-info">
-        <span id="footer-count">0</span> highlights
-        (<span id="footer-duration">0:00</span>)
-    </div>
-    <a href="{{ url_for('preview') }}" class="btn btn-primary btn-large" id="continue-btn">
-        Continue to Preview →
-    </a>
-</div>
+<!-- Highlights Tab (visible when panel hidden) -->
+<button class="highlights-tab hidden" id="highlights-tab" onclick="toggleHighlightsPanel()">
+    Highlights (<span id="tab-highlight-count">0</span>)
+</button>
 
 <style>
 /* Fixed viewport layout - no scrolling */
@@ -123,30 +115,10 @@ html, body {
     max-width: none;
     margin: 0;
     padding: 0;
-    height: calc(100vh - 56px - 110px - 44px); /* viewport - navbar - timeline - footer */
+    height: calc(100vh - 56px - 118px); /* viewport - navbar - timeline */
     overflow: hidden;
     display: flex;
     flex-direction: column;
-}
-
-/* Page Header - compact */
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.3rem 0.75rem;
-    flex-shrink: 0;
-}
-
-.header-left h1 {
-    font-size: 1.1rem;
-    margin: 0;
-}
-
-.header-left p {
-    margin: 0;
-    color: #6c757d;
-    font-size: 0.75rem;
 }
 
 /* Recording region on timeline */
@@ -439,7 +411,7 @@ html, body {
 /* Timeline Section - fixed at bottom */
 .timeline-section {
     position: fixed;
-    bottom: 44px;
+    bottom: 0;
     left: 0;
     right: 0;
     background: white;
@@ -461,12 +433,29 @@ html, body {
     font-size: 0.85rem;
 }
 
+.timeline-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.timeline-stats {
+    font-size: 0.8rem;
+    color: #495057;
+    font-weight: 500;
+}
+
 .timeline-info {
     display: flex;
     align-items: center;
     gap: 1rem;
     font-size: 0.75rem;
     color: #6c757d;
+}
+
+.btn-sm {
+    padding: 0.2rem 0.6rem;
+    font-size: 0.75rem;
 }
 
 .timeline-scroll-container {
@@ -616,24 +605,62 @@ html, body {
     font-size: 0.6rem;
 }
 
-/* Footer - slim */
-.sticky-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: white;
-    padding: 0.4rem 1rem;
-    box-shadow: 0 -1px 4px rgba(0,0,0,0.1);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    z-index: 100;
-    height: 44px;
+/* Highlights panel collapsed state */
+.highlights-section.collapsed,
+.splitter.collapsed {
+    display: none;
 }
 
-.footer-info {
+/* Highlights tab - visible when panel is hidden */
+.highlights-tab {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-right: none;
+    padding: 0.75rem 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #495057;
+    cursor: pointer;
+    z-index: 50;
+    border-radius: 6px 0 0 6px;
+    box-shadow: -2px 0 6px rgba(0,0,0,0.1);
+    transition: background 0.15s;
+}
+
+.highlights-tab:hover {
+    background: #e9ecef;
+}
+
+.highlights-tab.hidden {
+    display: none;
+}
+
+/* Toast notification */
+.toast {
+    position: fixed;
+    top: 64px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.8);
+    color: #fff;
+    padding: 0.4rem 1rem;
+    border-radius: 4px;
     font-size: 0.85rem;
+    font-weight: 500;
+    z-index: 200;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+.toast.visible {
+    opacity: 1;
 }
 
 /* No-select during splitter drag */
@@ -669,13 +696,14 @@ let selectedHighlightId = null;
 let recordingStart = null;  // null = not recording
 let videoDuration = {{ video_duration or 0 }};
 
-// Timeline zoom modes
+// Timeline zoom modes: hidden → full → 5s/inch
 const ZOOM_MODES = [
-    { label: 'Full length', getPixelsPerSecond: () => null }, // computed to fit
-    { label: '1 inch = 5s', getPixelsPerSecond: () => 96 / 5 },
+    { label: 'Hidden', hidden: true, getPixelsPerSecond: () => null },
+    { label: 'Full length', hidden: false, getPixelsPerSecond: () => null }, // computed to fit
+    { label: '1 inch = 5s', hidden: false, getPixelsPerSecond: () => 96 / 5 },
 ];
-let currentZoomMode = 0;
-let pixelsPerSecond = ZOOM_MODES[0].getPixelsPerSecond();
+let currentZoomMode = 1; // start at "full length" (visible)
+let pixelsPerSecond = ZOOM_MODES[1].getPixelsPerSecond();
 
 // YouTube integration
 const isYouTube = {{ 'true' if source_type == 'youtube' else 'false' }};
@@ -881,13 +909,24 @@ function setupSplitter() {
 // Timeline zoom cycling
 function cycleTimelineZoom() {
     currentZoomMode = (currentZoomMode + 1) % ZOOM_MODES.length;
-    applyZoomMode();
-    renderTimeline();
-    updatePlayheadPosition();
+    const mode = ZOOM_MODES[currentZoomMode];
+    const section = document.querySelector('.timeline-section');
+
+    if (mode.hidden) {
+        section.style.display = 'none';
+        document.querySelector('.container').style.height = 'calc(100vh - 56px)';
+    } else {
+        section.style.display = '';
+        document.querySelector('.container').style.height = '';
+        applyZoomMode();
+        renderTimeline();
+        updatePlayheadPosition();
+    }
 }
 
 function applyZoomMode() {
     const mode = ZOOM_MODES[currentZoomMode];
+    if (mode.hidden) return;
     const pps = mode.getPixelsPerSecond();
     if (pps === null) {
         // Full length: fit entire duration in visible scroll container width
@@ -902,9 +941,48 @@ function applyZoomMode() {
     if (infoSpan) infoSpan.textContent = mode.label;
 }
 
+// Toast notification
+let toastTimeout = null;
+let toastInterval = null;
+function showToast(message) {
+    let el = document.getElementById('toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'toast';
+        el.className = 'toast';
+        document.body.appendChild(el);
+    }
+    el.textContent = message;
+    el.classList.add('visible');
+    clearTimeout(toastTimeout);
+    clearInterval(toastInterval);
+    toastInterval = null;
+    toastTimeout = setTimeout(() => el.classList.remove('visible'), 1500);
+}
+
+function startRecordingToast() {
+    clearTimeout(toastTimeout);
+    clearInterval(toastInterval);
+    const el = document.getElementById('toast') || (() => {
+        const d = document.createElement('div');
+        d.id = 'toast';
+        d.className = 'toast';
+        document.body.appendChild(d);
+        return d;
+    })();
+    el.classList.add('visible');
+    const update = () => {
+        if (recordingStart === null) return;
+        const elapsed = Math.max(0, VideoPlayer.getCurrentTime() - recordingStart);
+        el.textContent = `Highlight: ${elapsed.toFixed(1)}s`;
+    };
+    update();
+    toastInterval = setInterval(update, 100);
+}
+
 // Speed indicator overlay
 let speedIndicatorTimeout = null;
-function showSpeedIndicator() {
+function showSpeedIndicator(rate) {
     let el = document.getElementById('speed-indicator');
     if (!el) {
         el = document.createElement('div');
@@ -912,7 +990,7 @@ function showSpeedIndicator() {
         el.className = 'speed-indicator';
         document.getElementById('video-pane').appendChild(el);
     }
-    el.textContent = VideoPlayer.getPlaybackRate().toFixed(1) + 'x';
+    el.textContent = rate.toFixed(1) + 'x';
     el.classList.add('visible');
     clearTimeout(speedIndicatorTimeout);
     speedIndicatorTimeout = setTimeout(() => el.classList.remove('visible'), 800);
@@ -922,6 +1000,31 @@ function showSpeedIndicator() {
 function toggleShortcuts() {
     const panel = document.getElementById('shortcuts-help');
     panel.classList.toggle('hidden');
+}
+
+// Highlights panel toggle
+let highlightsPanelVisible = true;
+function toggleHighlightsPanel() {
+    highlightsPanelVisible = !highlightsPanelVisible;
+    const panel = document.getElementById('highlights-pane');
+    const splitter = document.getElementById('splitter');
+    const tab = document.getElementById('highlights-tab');
+    const videoPane = document.getElementById('video-pane');
+
+    if (highlightsPanelVisible) {
+        panel.classList.remove('collapsed');
+        splitter.classList.remove('collapsed');
+        tab.classList.add('hidden');
+        videoPane.style.flex = '';
+        videoPane.style.width = '';
+        panel.style.width = '';
+    } else {
+        panel.classList.add('collapsed');
+        splitter.classList.add('collapsed');
+        tab.classList.remove('hidden');
+        videoPane.style.flex = '1';
+        videoPane.style.width = '';
+    }
 }
 
 async function loadHighlights() {
@@ -946,6 +1049,24 @@ function setupKeyboardShortcuts() {
         const currentTime = VideoPlayer.getCurrentTime();
 
         switch (e.key) {
+            case 'ArrowUp':
+                e.preventDefault();
+                if (isMeta) {
+                    if (highlights.length > 0) selectHighlight(highlights[0].id);
+                } else {
+                    jumpToPrevHighlight();
+                }
+                break;
+
+            case 'ArrowDown':
+                e.preventDefault();
+                if (isMeta) {
+                    if (highlights.length > 0) selectHighlight(highlights[highlights.length - 1].id);
+                } else {
+                    jumpToNextHighlight();
+                }
+                break;
+
             case 'ArrowLeft':
                 e.preventDefault();
                 VideoPlayer.setCurrentTime(currentTime - JUMP_LARGE);
@@ -996,36 +1117,52 @@ function setupKeyboardShortcuts() {
                 deleteSelectedHighlight();
                 break;
 
-            case 'd':
+            case 'd': {
                 e.preventDefault();
-                VideoPlayer.setPlaybackRate(VideoPlayer.getPlaybackRate() + 0.1);
-                showSpeedIndicator();
+                const newRate = Math.round(Math.max(0.1, Math.min(VideoPlayer.getPlaybackRate() + 0.1, 4.0)) * 10) / 10;
+                VideoPlayer.setPlaybackRate(newRate);
+                showSpeedIndicator(newRate);
+                break;
+            }
+
+            case 's': {
+                e.preventDefault();
+                const newRate = Math.round(Math.max(0.1, Math.min(VideoPlayer.getPlaybackRate() - 0.1, 4.0)) * 10) / 10;
+                VideoPlayer.setPlaybackRate(newRate);
+                showSpeedIndicator(newRate);
+                break;
+            }
+
+            case 'r': {
+                if (isMeta) break; // allow Cmd+R browser refresh
+                e.preventDefault();
+                const newRate = VideoPlayer.getPlaybackRate() === 2.0 ? 1.0 : 2.0;
+                VideoPlayer.setPlaybackRate(newRate);
+                showSpeedIndicator(newRate);
+                break;
+            }
+
+            case 'h':
+                e.preventDefault();
+                toggleHighlightsPanel();
                 break;
 
-            case 's':
-                e.preventDefault();
-                VideoPlayer.setPlaybackRate(VideoPlayer.getPlaybackRate() - 0.1);
-                showSpeedIndicator();
-                break;
-
-            case 'r':
-                e.preventDefault();
-                VideoPlayer.setPlaybackRate(VideoPlayer.getPlaybackRate() === 2.0 ? 1.0 : 2.0);
-                showSpeedIndicator();
-                break;
-
-            case 'Tab':
+            case 't':
+                if (isMeta) break;
                 e.preventDefault();
                 cycleTimelineZoom();
                 break;
 
-            case 'Escape':
+            case '\\':
                 e.preventDefault();
                 if (recordingStart !== null) {
                     cancelRecording();
-                } else {
-                    deselectHighlight();
                 }
+                break;
+
+            case 'Escape':
+                e.preventDefault();
+                deselectHighlight();
                 break;
         }
     }, true);
@@ -1047,6 +1184,7 @@ function setHighlightStart(time) {
 
     // Start recording new highlight
     recordingStart = time;
+    startRecordingToast();
     updateRecordingRegion();
 }
 
@@ -1109,6 +1247,7 @@ function updateRecordingRegion() {
 
 function cancelRecording() {
     recordingStart = null;
+    showToast('Cancelled');
     updateRecordingRegion();
 }
 
@@ -1124,6 +1263,7 @@ async function createHighlight(start, end) {
         highlights.sort((a, b) => a.start_time - b.start_time);
 
         selectedHighlightId = highlight.id;
+        showToast('Highlight added');
         renderHighlights();
         renderTimeline();
         updateStats();
@@ -1187,6 +1327,12 @@ function selectHighlight(id) {
     }
     renderHighlights();
     renderTimeline();
+
+    // Scroll the highlight into view in the sidebar
+    requestAnimationFrame(() => {
+        const el = document.querySelector(`.highlight-item[data-id="${id}"]`);
+        if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
 }
 
 function deselectHighlight() {
@@ -1253,9 +1399,9 @@ async function autoDetectHighlights() {
             renderHighlights();
             renderTimeline();
             updateStats();
-            btn.textContent = `Found ${data.detected_count} highlights`;
+            btn.textContent = `Found ${data.detected_count}`;
             setTimeout(() => {
-                btn.textContent = 'Auto-detect Highlights';
+                btn.textContent = 'Auto-detect';
                 btn.disabled = false;
             }, 2000);
         } else {
@@ -1263,7 +1409,7 @@ async function autoDetectHighlights() {
         }
     } catch (e) {
         alert('Auto-detection failed: ' + e.message);
-        btn.textContent = 'Auto-detect Highlights';
+        btn.textContent = 'Auto-detect';
         btn.disabled = false;
     }
 }
@@ -1449,8 +1595,8 @@ function updateStats() {
     const totalDuration = highlights.reduce((sum, h) => sum + h.duration, 0);
 
     document.getElementById('total-duration').textContent = formatTimeShort(totalDuration);
-    document.getElementById('footer-count').textContent = count;
-    document.getElementById('footer-duration').textContent = formatTimeShort(totalDuration);
+    document.getElementById('timeline-stats').textContent = `${count} highlights (${formatTimeShort(totalDuration)})`;
+    document.getElementById('tab-highlight-count').textContent = count;
 }
 
 
