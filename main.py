@@ -39,8 +39,8 @@ Examples:
     parser.add_argument(
         "--port", "-p",
         type=int,
-        default=5000,
-        help="Port for the web server (default: 5000)"
+        default=5252,
+        help="Port for the web server (default: 5252)"
     )
 
     parser.add_argument(

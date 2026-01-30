@@ -3,21 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Table Tennis Highlight Generator{% endblock %}</title>
+    <title>{% block title %}YouTube Highlight Editor{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     {% block head %}{% endblock %}
 </head>
 <body>
     <nav class="navbar">
         <div class="nav-brand">
-            <span class="logo">🏓</span>
-            <span>TT Highlights</span>
+            <span class="logo">🎬</span>
+            <span>YouTube Highlights</span>
         </div>
         <div class="nav-links">
-            <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Home</a>
-            <a href="{{ url_for('timeline') }}" class="{% if request.endpoint == 'timeline' %}active{% endif %}">Timeline</a>
-            <a href="{{ url_for('candidates') }}" class="{% if request.endpoint == 'candidates' %}active{% endif %}">Candidates</a>
-            <a href="{{ url_for('review') }}" class="{% if request.endpoint == 'review' %}active{% endif %}">Review</a>
+            <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Video</a>
+            <a href="{{ url_for('editor') }}" class="{% if request.endpoint == 'editor' %}active{% endif %}">Editor</a>
+            <a href="{{ url_for('preview') }}" class="{% if request.endpoint == 'preview' %}active{% endif %}">Preview</a>
+            <a href="{{ url_for('export_page') }}" class="{% if request.endpoint == 'export_page' %}active{% endif %}">Export</a>
         </div>
     </nav>
 
@@ -26,7 +26,7 @@
     </main>
 
     <footer class="footer">
-        <p>Human-in-the-loop highlight generation</p>
+        <p>Manual highlight editor for YouTube videos</p>
     </footer>
 
     {% block scripts %}{% endblock %}

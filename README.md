@@ -55,7 +55,7 @@ Or with a video pre-loaded:
 python main.py --video path/to/your/video.mp4
 ```
 
-Then open http://127.0.0.1:5000 in your browser.
+Then open http://127.0.0.1:5252 in your browser.
 
 ### CLI Mode
 

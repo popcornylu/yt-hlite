@@ -338,3 +338,211 @@ def format_timestamp(seconds: float) -> str:
     if hours > 0:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
+
+
+import re
+
+
+def extract_youtube_video_id(url: str) -> str:
+    """Extract video ID from various YouTube URL formats."""
+    patterns = [
+        r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/|youtube\.com/v/)([a-zA-Z0-9_-]{11})',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    raise ValueError("Invalid YouTube URL")
+
+
+@dataclass
+class YouTubeMetadata:
+    """Metadata extracted from a YouTube video."""
+
+    video_id: str
+    title: str
+    duration: float  # seconds
+    fps: float
+    thumbnail: str
+    url: str
+
+    def to_dict(self) -> dict:
+        return {
+            "video_id": self.video_id,
+            "title": self.title,
+            "duration": self.duration,
+            "fps": self.fps,
+            "thumbnail": self.thumbnail,
+            "url": self.url,
+        }
+
+
+class YouTubeProcessor:
+    """Handles YouTube video downloading and processing."""
+
+    # Use /tmp for caching downloads across sessions
+    CACHE_DIR = Path("/tmp/youtube-cache")
+
+    def __init__(self, video_id: str, output_dir: str = "data/output"):
+        """
+        Initialize the YouTube processor.
+
+        Args:
+            video_id: YouTube video ID (11 characters)
+            output_dir: Directory for output files (for compilation output)
+        """
+        self.video_id = video_id
+        self.url = f"https://www.youtube.com/watch?v={video_id}"
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Cache directory for this video
+        self.cache_dir = self.CACHE_DIR / video_id
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        self.audio_path: Optional[str] = None
+        self.video_path: Optional[str] = None
+        self.metadata: Optional[YouTubeMetadata] = None
+
+        # Check for existing cached files
+        self._check_cached_files()
+
+    def _check_cached_files(self):
+        """Check for existing cached audio/video files."""
+        audio_file = self.cache_dir / "audio.wav"
+        video_file = self.cache_dir / "video.mp4"
+
+        if audio_file.exists():
+            self.audio_path = str(audio_file)
+            print(f"[YouTubeProcessor] Found cached audio: {self.audio_path}")
+
+        if video_file.exists():
+            self.video_path = str(video_file)
+            print(f"[YouTubeProcessor] Found cached video: {self.video_path}")
+
+    def is_audio_cached(self) -> bool:
+        """Check if audio is already downloaded."""
+        return self.audio_path is not None and Path(self.audio_path).exists()
+
+    def is_video_cached(self) -> bool:
+        """Check if video is already downloaded."""
+        return self.video_path is not None and Path(self.video_path).exists()
+
+    def get_metadata(self) -> YouTubeMetadata:
+        """Get video metadata via yt-dlp."""
+        if self.metadata:
+            return self.metadata
+
+        cmd = ["yt-dlp", "--dump-json", "--no-download", self.url]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            raise RuntimeError(f"yt-dlp failed to get metadata: {result.stderr}")
+
+        info = json.loads(result.stdout)
+
+        self.metadata = YouTubeMetadata(
+            video_id=self.video_id,
+            title=info.get("title", "Unknown"),
+            duration=float(info.get("duration", 0)),
+            fps=float(info.get("fps", 30) or 30),
+            thumbnail=info.get("thumbnail", ""),
+            url=self.url,
+        )
+
+        return self.metadata
+
+    def download_audio(self) -> str:
+        """Download audio only (for analysis). Returns path to WAV file."""
+        output = self.cache_dir / "audio.wav"
+
+        # Check if already cached
+        if output.exists():
+            self.audio_path = str(output)
+            print(f"[YouTubeProcessor] Using cached audio: {self.audio_path}")
+            return self.audio_path
+
+        print(f"[YouTubeProcessor] Downloading audio to: {output}")
+
+        # Download as wav for librosa compatibility
+        cmd = [
+            "yt-dlp",
+            "-f", "bestaudio",
+            "-x",
+            "--audio-format", "wav",
+            "--audio-quality", "0",
+            "-o", str(output),
+            "--postprocessor-args", "ffmpeg:-ar 22050 -ac 1",
+            self.url
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            raise RuntimeError(f"yt-dlp audio download failed: {result.stderr}")
+
+        self.audio_path = str(output)
+        print(f"[YouTubeProcessor] Audio downloaded: {self.audio_path}")
+        return self.audio_path
+
+    def download_video(self) -> str:
+        """Download full video (for compilation). Returns path to MP4 file."""
+        output = self.cache_dir / "video.mp4"
+
+        # Check if already cached
+        if output.exists():
+            self.video_path = str(output)
+            print(f"[YouTubeProcessor] Using cached video: {self.video_path}")
+            return self.video_path
+
+        print(f"[YouTubeProcessor] Downloading video to: {output}")
+
+        cmd = [
+            "yt-dlp",
+            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "--merge-output-format", "mp4",
+            "-o", str(output),
+            self.url
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            raise RuntimeError(f"yt-dlp video download failed: {result.stderr}")
+
+        self.video_path = str(output)
+        print(f"[YouTubeProcessor] Video downloaded: {self.video_path}")
+        return self.video_path
+
+    def get_video_path(self) -> Optional[str]:
+        """Get path to downloaded video, if available."""
+        output = self.cache_dir / "video.mp4"
+        if output.exists():
+            self.video_path = str(output)
+            return self.video_path
+        return None
+
+    def get_cache_info(self) -> dict:
+        """Get information about cached files."""
+        audio_file = self.cache_dir / "audio.wav"
+        video_file = self.cache_dir / "video.mp4"
+
+        def get_file_size(path: Path) -> Optional[str]:
+            if path.exists():
+                size = path.stat().st_size
+                if size > 1024 * 1024 * 1024:
+                    return f"{size / (1024*1024*1024):.1f} GB"
+                elif size > 1024 * 1024:
+                    return f"{size / (1024*1024):.1f} MB"
+                elif size > 1024:
+                    return f"{size / 1024:.1f} KB"
+                return f"{size} B"
+            return None
+
+        return {
+            "cache_dir": str(self.cache_dir),
+            "audio_cached": audio_file.exists(),
+            "audio_size": get_file_size(audio_file),
+            "video_cached": video_file.exists(),
+            "video_size": get_file_size(video_file),
+        }

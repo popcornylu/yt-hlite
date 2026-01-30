@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Table Tennis Highlight Generator - A human-in-the-loop system for generating highlight reels from table tennis match videos.
+Table Tennis Highlight Generator - A human-in-the-loop system for generating highlight reels from table tennis match videos. Supports both local video files and YouTube URLs.
 
 ## Quick Start
 
@@ -10,23 +10,36 @@ Table Tennis Highlight Generator - A human-in-the-loop system for generating hig
 # Install dependencies
 pip install -r requirements.txt
 
-# Run web server (default port 5001)
+# Run web server (default port 5252)
 python main.py
-
-# Run with pre-loaded video
-python main.py --video /path/to/video.mp4
 ```
 
-Open http://127.0.0.1:5001 in browser.
+Open http://127.0.0.1:5252 in browser, then paste a YouTube URL or use a local video file.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
+│                         WORKFLOW                                │
+│                                                                 │
+│  YouTube URL → yt-dlp (audio only) → Audio Analysis → Rallies  │
+│       ↓                                                         │
+│  YouTube iframe ← Timeline ← Rally Detection                    │
+│       ↓                                                         │
+│  Preview (seek iframe to timestamps)                            │
+│       ↓                                                         │
+│  Export Options:                                                │
+│    1. Timecodes (instant) → clipboard                           │
+│    2. Compile Video → yt-dlp download → ffmpeg cut → MP4        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+```
+┌─────────────────────────────────────────────────────────────────┐
 │                        Web UI (Flask)                           │
 │  ┌──────────┐  ┌────────────┐  ┌────────────┐  ┌─────────────┐ │
-│  │  Index   │→ │ Candidates │→ │   Review   │→ │  Download   │ │
-│  │(upload)  │  │ (review)   │  │ (compile)  │  │ (output)    │ │
+│  │  Index   │→ │ Candidates │→ │   Review   │→ │  Export     │ │
+│  │(YouTube) │  │ (review)   │  │ (compile)  │  │ (output)    │ │
 │  └──────────┘  └────────────┘  └────────────┘  └─────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
@@ -39,9 +52,9 @@ Open http://127.0.0.1:5001 in browser.
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
 │           ↓                                         ↓          │
 │  ┌─────────────────┐                      ┌─────────────────┐  │
-│  │ VideoProcessor  │                      │PreferenceLearner│  │
-│  │ (metadata,      │                      │ (learn from     │  │
-│  │  thumbnails)    │                      │  user feedback) │  │
+│  │YouTubeProcessor │                      │PreferenceLearner│  │
+│  │ (yt-dlp audio   │                      │ (learn from     │  │
+│  │  & video DL)    │                      │  user feedback) │  │
 │  └─────────────────┘                      └─────────────────┘  │
 │                              ↓                                  │
 │                    ┌─────────────────┐                         │
@@ -61,7 +74,7 @@ tt-highlight/
 │   ├── rally_detector.py     # Group hits into Rally objects
 │   ├── highlight_scorer.py   # Score & rank rallies (ScoredRally)
 │   ├── preference_learner.py # Learn weights from user feedback
-│   ├── video_processor.py    # Video metadata, frame extraction
+│   ├── video_processor.py    # Video/YouTube processing, metadata
 │   ├── video_compiler.py     # FFmpeg compilation with transitions
 │   └── web_ui/
 │       ├── __init__.py
@@ -70,13 +83,11 @@ tt-highlight/
 │       │   └── style.css     # All CSS styles
 │       └── templates/
 │           ├── base.html     # Base template with nav
-│           ├── index.html    # Home - video selection
+│           ├── index.html    # Home - YouTube URL input
 │           ├── candidates.html # Main review interface
-│           ├── review.html   # Final review & compile
-│           └── timeline.html # (Legacy, redirects to candidates)
+│           └── review.html   # Final review & export
 ├── data/
-│   ├── input/                # Uploaded videos
-│   ├── output/               # Compiled highlights
+│   ├── output/               # Downloaded audio/video, compiled highlights
 │   └── feedback/             # User feedback JSON files
 ├── main.py                   # Entry point
 ├── requirements.txt
@@ -85,6 +96,20 @@ tt-highlight/
 ```
 
 ## Key Data Structures
+
+### YouTubeProcessor (video_processor.py)
+```python
+class YouTubeProcessor:
+    video_id: str              # YouTube video ID (11 chars)
+    url: str                   # Full YouTube URL
+    audio_path: str            # Path to downloaded WAV
+    video_path: str            # Path to downloaded MP4 (on-demand)
+    metadata: YouTubeMetadata  # Title, duration, fps, thumbnail
+
+    def get_metadata() -> YouTubeMetadata   # Get video info via yt-dlp
+    def download_audio() -> str             # Download audio only (fast)
+    def download_video() -> str             # Download full video (for compile)
+```
 
 ### Rally (rally_detector.py)
 ```python
@@ -125,40 +150,100 @@ class ScoredRally:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Home page (video selection) |
-| `/set-video` | POST | Set local video path `{path: string}` |
-| `/browse-video` | GET | Open native macOS file picker |
-| `/upload` | POST | Upload video file |
+| `/` | GET | Home page (YouTube URL input) |
+| `/set-youtube` | POST | Set YouTube URL `{url: string}` |
+| `/api/youtube-info` | GET | Get YouTube video metadata |
 | `/candidates` | GET | Main review page |
-| `/review` | GET | Final review & compile page |
-| `/api/analyze` | POST | Start video analysis |
+| `/review` | GET | Final review & export page |
+| `/api/analyze` | POST | Start video analysis (downloads audio) |
 | `/api/rallies` | GET | Get all scored rallies |
-| `/api/rally/<id>/feedback` | POST | Submit feedback `{rating, decision, is_highlight}` |
 | `/api/rally/<id>/adjust` | POST | Adjust boundaries `{start_frame, end_frame}` |
-| `/api/compile` | POST | Compile highlights `{rally_ids: []}` |
-| `/video` | GET | Stream source video |
+| `/api/export-timecodes` | GET | Export timecodes as text |
+| `/api/compile` | POST | Compile highlights `{rally_ids: []}` (downloads video) |
 | `/highlights/<filename>` | GET | Download compiled video |
 
 ## Web UI Features
 
+### Index Page (index.html)
+- **YouTube URL Input**: Paste any YouTube URL format
+- **Video Preview**: Shows thumbnail and title after URL validation
+
 ### Candidates Page (candidates.html)
+- **YouTube Player**: Embedded iframe with YouTube IFrame API
 - **Timeline**: Zoomable (Cmd+/Cmd-), shows all rallies color-coded
-- **Video Player**: Click timeline to seek, plays selected rally
 - **Rally Info Panel**: Shows stats, rating, keep/reject buttons
 - **Keyboard Shortcuts**:
   - `←/→` - Previous/Next rally
-  - `↑/↓` or `G/B` - Mark Good/Bad
+  - `↑/↓` - Adjust playback speed
   - `1-5` - Star rating
   - `Space` - Play/Pause
-  - `Cmd+[/]` - Adjust start/end boundary
+  - `Cmd+[/]` - Set start/end boundary at current position
   - `Cmd+Plus/Minus` - Zoom timeline
-- **Draggable Boundaries**: Drag handles on selected rally to adjust
 
 ### Review Page (review.html)
+- **YouTube Player**: Embedded iframe for preview
 - **Timeline**: Shows selected highlights in green
 - **Preview Simulation**: Plays through clips in sequence
-- **Sidebar Drawer**: Toggle to show/hide selected list
-- **Compile**: Generate final video with transitions
+- **Export Options**:
+  - **Export Timecodes**: Instant - copies timestamps to clipboard
+  - **Compile Video**: Downloads video, compiles MP4 with transitions
+
+## State Management
+
+**In-memory state** (lost on server restart):
+```python
+app.state = {
+    "youtube_processor": YouTubeProcessor,  # For YouTube mode
+    "video_processor": VideoProcessor,      # For local video mode
+    "audio_analyzer": AudioAnalyzer,
+    "audio_analysis": AudioAnalysis,
+    "rally_detector": RallyDetector,
+    "rallies": list[Rally],
+    "scored_rallies": list[ScoredRally],
+    "highlight_scorer": HighlightScorer,
+    "preference_learner": PreferenceLearner,
+    "video_compiler": VideoCompiler,
+    "volume_data": list[float],
+}
+
+app.config = {
+    "SOURCE_TYPE": "youtube" | "local",
+    "YOUTUBE_VIDEO_ID": str | None,
+    "VIDEO_PATH": str | None,
+}
+```
+
+## YouTube URL Parsing
+
+Supported URL formats:
+- `https://www.youtube.com/watch?v=VIDEO_ID`
+- `https://youtu.be/VIDEO_ID`
+- `https://www.youtube.com/embed/VIDEO_ID`
+- `https://www.youtube.com/v/VIDEO_ID`
+
+```python
+def extract_youtube_video_id(url: str) -> str:
+    patterns = [
+        r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/|youtube\.com/v/)([a-zA-Z0-9_-]{11})',
+    ]
+    # Returns 11-character video ID
+```
+
+## Dependencies
+
+- **Flask**: Web framework
+- **librosa**: Audio analysis
+- **numpy/scipy**: Signal processing
+- **ffmpeg** (external): Video processing
+- **yt-dlp**: YouTube downloading
+
+## Timecode Export Format
+
+```
+0:20.22-0:25.36
+0:36.11-0:38.02
+1:15.00-1:22.45
+```
 
 ## Compilation Config (video_compiler.py)
 
@@ -175,85 +260,16 @@ class CompilationConfig:
 ## Detection Parameters (rally_detector.py)
 
 ```python
-min_hits_per_rally: int = 3      # Minimum hits for valid rally
-max_hit_interval: float = 2.0    # Max gap between hits (seconds)
-min_rally_gap: float = 2.0       # Min gap between rallies
-context_before: float = 1.5      # Context padding
-context_after: float = 2.0       # Context padding
+min_hits_per_rally: int = 4      # Minimum hits for valid rally
+max_hit_interval: float = 1.2    # Max gap between hits (seconds)
+min_rally_gap: float = 4.0       # Min gap between rallies
+context_before: float = 1.0      # Context padding
+context_after: float = 1.5       # Context padding
 ```
 
-## State Management
+## Notes
 
-**In-memory state** (lost on server restart):
-```python
-app.state = {
-    "video_processor": VideoProcessor,
-    "audio_analyzer": AudioAnalyzer,
-    "audio_analysis": AudioAnalysis,  # Ball hits, crowd segments
-    "rally_detector": RallyDetector,
-    "rallies": list[Rally],
-    "scored_rallies": list[ScoredRally],
-    "highlight_scorer": HighlightScorer,
-    "preference_learner": PreferenceLearner,
-    "video_compiler": VideoCompiler,
-    "volume_data": list[float],  # For waveform display
-}
-```
-
-**Persistent storage** (data/feedback/):
-- User feedback saved as JSON
-- Preference weights learned across sessions
-
-## Known Issues / TODOs
-
-1. **State lost on restart**: Rally data is in-memory. Re-analyze required after server restart.
-2. **Photos app access**: Cannot directly browse Photos library. User must export first.
-3. **Large videos**: No streaming analysis - loads entire audio into memory.
-
-## Common Modifications
-
-### Change detection sensitivity
-Edit `src/audio_analyzer.py`:
-- `onset_threshold` - Lower = more sensitive
-- `min_confidence` - Filter weak detections
-
-### Change scoring weights
-Edit `src/highlight_scorer.py`:
-```python
-default_weights = {
-    "duration": 3.0,      # Rally length
-    "hit_count": 2.5,     # Number of hits
-    "crowd_intensity": 1.5,
-    "motion_intensity": 1.0,
-    "confidence": 0.5,
-}
-```
-
-### Add new keyboard shortcut
-Edit `src/web_ui/templates/candidates.html`:
-```javascript
-document.addEventListener('keydown', (e) => {
-    // Add in the switch statement
-});
-```
-
-## Time Format
-
-All times displayed as `HH:MM:SS.cc` (hours:minutes:seconds.centiseconds)
-```javascript
-function formatTime(seconds) {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    const centis = Math.floor((seconds % 1) * 100);
-    return `${hrs.toString().padStart(2,'0')}:${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}.${centis.toString().padStart(2,'0')}`;
-}
-```
-
-## Dependencies
-
-- **Flask**: Web framework
-- **librosa**: Audio analysis
-- **numpy/scipy**: Signal processing
-- **ffmpeg** (external): Video processing
-- **osascript** (macOS): Native file picker
+- **Audio download is fast** (~10-30 seconds for typical video)
+- **Video download only when compiling** (on-demand)
+- **YouTube iframe seek precision** ~0.5s (acceptable for highlights)
+- **Boundary adjustment** uses time inputs (frame-accurate not possible with YouTube)

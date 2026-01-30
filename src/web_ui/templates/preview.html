@@ -1,0 +1,727 @@
+{% extends "base.html" %}
+
+{% block title %}YouTube Highlights - Preview{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Preview Highlights</h1>
+    <p>Review your highlights before exporting (read-only)</p>
+</div>
+
+<!-- Timeline Preview Section -->
+<div class="card">
+    <div class="card-header">
+        <h2>Highlight Timeline</h2>
+        <div class="timeline-legend">
+            <span class="legend-item"><span class="legend-color selected"></span> Selected</span>
+            <span class="legend-item"><span class="legend-color unselected"></span> Not Selected</span>
+        </div>
+    </div>
+    <div class="timeline-preview-container">
+        <div class="timeline-bar" id="review-timeline">
+            <!-- Segments populated by JS -->
+        </div>
+        <div id="preview-playhead" class="preview-playhead"></div>
+    </div>
+    <div class="time-labels" id="time-labels"></div>
+</div>
+
+<!-- Video Preview Section -->
+<div class="card">
+    <div class="card-header">
+        <h2>Preview Simulation</h2>
+        <div class="preview-controls">
+            <button class="btn btn-primary" id="simulate-btn" onclick="startSimulation()">
+                ▶ Play Preview
+            </button>
+            <button class="btn btn-secondary" id="stop-btn" onclick="stopSimulation()" disabled>
+                ■ Stop
+            </button>
+        </div>
+    </div>
+    <div class="preview-section">
+        {% if source_type == 'youtube' %}
+        <div id="youtube-player-container">
+            <div id="youtube-player"></div>
+        </div>
+        {% else %}
+        <video id="preview-video" controls>
+            <source src="/video" type="video/mp4">
+        </video>
+        {% endif %}
+        <div class="preview-info">
+            <div class="preview-status" id="preview-status">
+                <span class="status-label">Status:</span>
+                <span class="status-value" id="status-text">Ready</span>
+            </div>
+            <div class="preview-progress">
+                <span class="progress-label">Clip:</span>
+                <span class="progress-value" id="clip-progress">- / -</span>
+            </div>
+            <div class="preview-current">
+                <span class="current-label">Current:</span>
+                <span class="current-value" id="current-clip-info">--</span>
+            </div>
+            <div class="preview-total">
+                <span class="total-label">Total Duration:</span>
+                <span class="total-value" id="preview-total-duration">0:00</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Selected Highlights Summary -->
+<div class="card">
+    <div class="card-header">
+        <h2>Selected Highlights</h2>
+        <span class="badge" id="selection-badge">0 selected</span>
+    </div>
+    <div id="selected-list" class="selected-list-horizontal">
+        <!-- Populated by JS -->
+    </div>
+</div>
+
+<!-- Sticky Footer -->
+<div class="sticky-footer">
+    <div class="footer-info">
+        <span id="footer-count">0</span> highlights selected
+        (<span id="footer-duration">0:00</span>)
+    </div>
+    <a href="{{ url_for('export_page') }}" class="btn btn-primary btn-large" id="export-btn">
+        Continue to Export →
+    </a>
+</div>
+
+<style>
+/* Timeline Preview */
+.timeline-preview-container {
+    position: relative;
+    padding: 1rem 0;
+}
+
+.timeline-bar {
+    height: 40px;
+    background: #e9ecef;
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+}
+
+.timeline-segment {
+    position: absolute;
+    height: 100%;
+    transition: opacity 0.2s;
+    cursor: pointer;
+}
+
+.timeline-segment.selected {
+    background: #28a745;
+    opacity: 0.8;
+}
+
+.timeline-segment.unselected {
+    background: #6c757d;
+    opacity: 0.3;
+}
+
+.timeline-segment:hover {
+    opacity: 1;
+}
+
+.preview-playhead {
+    position: absolute;
+    top: 1rem;
+    height: 40px;
+    width: 3px;
+    background: #ff0000;
+    z-index: 10;
+    left: 0;
+    display: none;
+}
+
+.preview-playhead::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 12px;
+    height: 12px;
+    background: #ff0000;
+    border-radius: 50%;
+}
+
+.time-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-top: 0.25rem;
+}
+
+.timeline-legend {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.875rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 2px;
+}
+
+.legend-color.selected { background: #28a745; }
+.legend-color.unselected { background: #6c757d; opacity: 0.5; }
+
+/* Preview Section */
+.preview-section {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 1.5rem;
+}
+
+.preview-section video {
+    width: 100%;
+    background: #000;
+    border-radius: 8px;
+}
+
+#youtube-player-container {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#youtube-player {
+    width: 100%;
+    height: 100%;
+}
+
+.preview-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.preview-status,
+.preview-progress,
+.preview-current,
+.preview-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.status-label,
+.progress-label,
+.current-label,
+.total-label {
+    color: #6c757d;
+    font-size: 0.875rem;
+}
+
+.status-value,
+.progress-value,
+.current-value,
+.total-value {
+    font-weight: 600;
+}
+
+.status-value.playing {
+    color: #28a745;
+}
+
+.status-value.transitioning {
+    color: #ffc107;
+}
+
+.preview-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Selected List Horizontal */
+.selected-list-horizontal {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 1rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.selected-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #e8f5e9;
+    border: 1px solid #28a745;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.selected-chip:hover {
+    background: #c8e6c9;
+}
+
+.selected-chip.current {
+    background: #fff3cd;
+    border-color: #ffc107;
+}
+
+.chip-number {
+    background: #28a745;
+    color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.chip-time {
+    font-weight: 500;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: #6c757d;
+}
+
+/* Footer */
+.sticky-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    padding: 1rem 2rem;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 100;
+}
+
+.badge {
+    background: #28a745;
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .preview-section {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let highlights = [];
+let selectedRallies = [];  // Keep this name for compatibility with simulation code
+let videoDuration = 0;
+
+// Compilation config
+const CONTEXT_BEFORE = 1.0;
+const CONTEXT_AFTER = 1.5;
+
+// Simulation state
+let isSimulating = false;
+let currentClipIndex = 0;
+let simulationClips = [];
+
+// YouTube integration
+const isYouTube = {{ 'true' if source_type == 'youtube' else 'false' }};
+const youtubeVideoId = '{{ youtube_id or "" }}';
+let ytPlayer = null;
+let ytPlayerReady = false;
+let ytTimeUpdateInterval = null;
+
+const video = isYouTube ? null : document.getElementById('preview-video');
+
+// Unified video interface
+const VideoPlayer = {
+    getCurrentTime() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            return ytPlayer.getCurrentTime() || 0;
+        } else if (video) {
+            return video.currentTime;
+        }
+        return 0;
+    },
+    setCurrentTime(time) {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            ytPlayer.seekTo(time, true);
+        } else if (video) {
+            video.currentTime = time;
+        }
+    },
+    play() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            ytPlayer.playVideo();
+        } else if (video) {
+            video.play();
+        }
+    },
+    pause() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            ytPlayer.pauseVideo();
+        } else if (video) {
+            video.pause();
+        }
+    },
+    isPaused() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            return ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING;
+        } else if (video) {
+            return video.paused;
+        }
+        return true;
+    },
+    getDuration() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            return ytPlayer.getDuration() || videoDuration;
+        } else if (video) {
+            return video.duration || videoDuration;
+        }
+        return videoDuration;
+    }
+};
+
+// YouTube IFrame API setup
+if (isYouTube) {
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(tag);
+}
+
+function onYouTubeIframeAPIReady() {
+    ytPlayer = new YT.Player('youtube-player', {
+        videoId: youtubeVideoId,
+        playerVars: {
+            'autoplay': 0,
+            'controls': 1,
+            'modestbranding': 1,
+            'rel': 0,
+            'enablejsapi': 1,
+            'origin': window.location.origin
+        },
+        events: {
+            'onReady': onYTPlayerReady,
+            'onStateChange': onYTPlayerStateChange
+        }
+    });
+}
+
+function onYTPlayerReady(event) {
+    ytPlayerReady = true;
+    videoDuration = ytPlayer.getDuration();
+    renderTimeline();
+
+    ytTimeUpdateInterval = setInterval(() => {
+        if (ytPlayerReady && isSimulating) {
+            onVideoTimeUpdate();
+        }
+        if (videoDuration > 0) {
+            const percent = (VideoPlayer.getCurrentTime() / videoDuration) * 100;
+            document.getElementById('preview-playhead').style.left = `${percent}%`;
+        }
+    }, 100);
+}
+
+function onYTPlayerStateChange(event) {
+    if (event.data === YT.PlayerState.ENDED) {
+        onVideoEnded();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadRallies();
+    restoreSelection();
+    if (!isYouTube) {
+        setupVideoEvents();
+    }
+});
+
+async function loadRallies() {
+    // Load highlights from the new API
+    const response = await fetch('/api/highlights');
+    const data = await response.json();
+    highlights = data.highlights || [];
+
+    highlights.sort((a, b) => a.start_time - b.start_time);
+
+    if (!isYouTube && video) {
+        video.onloadedmetadata = () => {
+            videoDuration = video.duration;
+            renderTimeline();
+        };
+
+        if (video.duration) {
+            videoDuration = video.duration;
+            renderTimeline();
+        }
+    }
+}
+
+function restoreSelection() {
+    // All highlights are selected by default (no filtering needed)
+    selectedRallies = [...highlights];
+
+    // Save to sessionStorage for export page
+    sessionStorage.setItem('selectedHighlights', JSON.stringify(selectedRallies.map(h => h.id)));
+
+    renderSelectedList();
+    renderTimeline();
+    updateFooter();
+}
+
+function renderTimeline() {
+    const timeline = document.getElementById('review-timeline');
+    const labels = document.getElementById('time-labels');
+    timeline.innerHTML = '';
+
+    const duration = VideoPlayer.getDuration() || videoDuration ||
+        Math.max(...highlights.map(h => h.end_time), 100);
+
+    if (duration > 0) {
+        videoDuration = duration;
+    }
+
+    highlights.forEach((highlight, i) => {
+        const segment = document.createElement('div');
+        segment.className = 'timeline-segment selected';
+        segment.dataset.index = i;
+
+        const left = (highlight.start_time / videoDuration) * 100;
+        const width = ((highlight.end_time - highlight.start_time) / videoDuration) * 100;
+
+        segment.style.left = `${left}%`;
+        segment.style.width = `${Math.max(width, 0.3)}%`;
+        segment.title = `${formatTime(highlight.start_time)} - ${formatTime(highlight.end_time)}`;
+
+        segment.onclick = () => seekToRally(highlight);
+
+        timeline.appendChild(segment);
+    });
+
+    labels.innerHTML = '';
+    const numLabels = 10;
+    for (let i = 0; i <= numLabels; i++) {
+        const label = document.createElement('span');
+        label.textContent = formatTime((videoDuration / numLabels) * i);
+        labels.appendChild(label);
+    }
+}
+
+function seekToRally(rally) {
+    VideoPlayer.setCurrentTime(rally.start_time);
+    VideoPlayer.play();
+}
+
+function renderSelectedList() {
+    const container = document.getElementById('selected-list');
+
+    if (selectedRallies.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <p>No highlights created. Go to <a href="{{ url_for('editor') }}">Editor</a> to create highlights.</p>
+            </div>
+        `;
+        document.getElementById('export-btn').classList.add('disabled');
+        return;
+    }
+
+    document.getElementById('export-btn').classList.remove('disabled');
+
+    const sortedRallies = [...selectedRallies].sort((a, b) => a.start_time - b.start_time);
+
+    container.innerHTML = sortedRallies.map((highlight, i) => `
+        <div class="selected-chip" data-id="${highlight.id}" onclick="seekToRally(highlights.find(h => h.id === '${highlight.id}'))">
+            <span class="chip-number">${i + 1}</span>
+            <span class="chip-time">${formatTimeShort(highlight.start_time)}</span>
+        </div>
+    `).join('');
+
+    document.getElementById('selection-badge').textContent = `${selectedRallies.length} selected`;
+}
+
+function updateFooter() {
+    let totalDuration = 0;
+    selectedRallies.forEach(rally => {
+        const start = Math.max(0, rally.start_time - CONTEXT_BEFORE);
+        const end = Math.min(videoDuration || Infinity, rally.end_time + CONTEXT_AFTER);
+        totalDuration += (end - start);
+    });
+
+    document.getElementById('footer-count').textContent = selectedRallies.length;
+    document.getElementById('footer-duration').textContent = formatTime(totalDuration);
+    document.getElementById('preview-total-duration').textContent = formatTime(totalDuration);
+}
+
+// Simulation functions
+function setupVideoEvents() {
+    video.addEventListener('timeupdate', onVideoTimeUpdate);
+    video.addEventListener('ended', onVideoEnded);
+}
+
+function startSimulation() {
+    if (selectedRallies.length === 0) {
+        alert('No highlights selected.');
+        return;
+    }
+
+    simulationClips = [...selectedRallies]
+        .map(r => ({
+            ...r,
+            effective_start: Math.max(0, r.start_time - CONTEXT_BEFORE),
+            effective_end: Math.min(videoDuration || Infinity, r.end_time + CONTEXT_AFTER)
+        }))
+        .sort((a, b) => a.start_time - b.start_time);
+
+    currentClipIndex = 0;
+    isSimulating = true;
+
+    document.getElementById('simulate-btn').disabled = true;
+    document.getElementById('stop-btn').disabled = false;
+    document.getElementById('status-text').textContent = 'Playing';
+    document.getElementById('status-text').className = 'status-value playing';
+    document.getElementById('preview-playhead').style.display = 'block';
+
+    playCurrentClip();
+}
+
+function stopSimulation() {
+    isSimulating = false;
+    VideoPlayer.pause();
+
+    document.getElementById('simulate-btn').disabled = false;
+    document.getElementById('stop-btn').disabled = true;
+    document.getElementById('status-text').textContent = 'Stopped';
+    document.getElementById('status-text').className = 'status-value';
+    document.getElementById('preview-playhead').style.display = 'none';
+    document.getElementById('clip-progress').textContent = '- / -';
+    document.getElementById('current-clip-info').textContent = '--';
+
+    document.querySelectorAll('.selected-chip').forEach(el => el.classList.remove('current'));
+}
+
+function playCurrentClip() {
+    if (!isSimulating || currentClipIndex >= simulationClips.length) {
+        finishSimulation();
+        return;
+    }
+
+    const clip = simulationClips[currentClipIndex];
+
+    document.getElementById('clip-progress').textContent =
+        `${currentClipIndex + 1} / ${simulationClips.length}`;
+    document.getElementById('current-clip-info').textContent =
+        `${formatTime(clip.effective_start)} - ${formatTime(clip.effective_end)}`;
+
+    document.querySelectorAll('.selected-chip').forEach(el => {
+        el.classList.remove('current');
+        if (el.dataset.id === clip.id) {
+            el.classList.add('current');
+        }
+    });
+
+    VideoPlayer.setCurrentTime(clip.effective_start);
+    VideoPlayer.play();
+}
+
+function onVideoTimeUpdate() {
+    if (videoDuration > 0) {
+        const percent = (VideoPlayer.getCurrentTime() / videoDuration) * 100;
+        document.getElementById('preview-playhead').style.left = `${percent}%`;
+    }
+
+    if (!isSimulating) return;
+
+    const clip = simulationClips[currentClipIndex];
+    if (!clip) return;
+
+    if (VideoPlayer.getCurrentTime() >= clip.effective_end - 0.05) {
+        currentClipIndex++;
+
+        if (currentClipIndex < simulationClips.length) {
+            document.getElementById('status-text').textContent = 'Transitioning...';
+            document.getElementById('status-text').className = 'status-value transitioning';
+
+            setTimeout(() => {
+                if (isSimulating) {
+                    document.getElementById('status-text').textContent = 'Playing';
+                    document.getElementById('status-text').className = 'status-value playing';
+                    playCurrentClip();
+                }
+            }, 300);
+        } else {
+            finishSimulation();
+        }
+    }
+}
+
+function onVideoEnded() {
+    if (isSimulating) {
+        currentClipIndex++;
+        if (currentClipIndex < simulationClips.length) {
+            playCurrentClip();
+        } else {
+            finishSimulation();
+        }
+    }
+}
+
+function finishSimulation() {
+    isSimulating = false;
+    VideoPlayer.pause();
+
+    document.getElementById('simulate-btn').disabled = false;
+    document.getElementById('stop-btn').disabled = true;
+    document.getElementById('status-text').textContent = 'Preview Complete';
+    document.getElementById('status-text').className = 'status-value';
+    document.getElementById('clip-progress').textContent = `${simulationClips.length} / ${simulationClips.length}`;
+
+    document.querySelectorAll('.selected-chip').forEach(el => el.classList.remove('current'));
+}
+
+function formatTime(seconds) {
+    if (seconds === undefined || seconds === null) return '00:00:00.00';
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const centis = Math.floor((seconds % 1) * 100);
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${centis.toString().padStart(2, '0')}`;
+}
+
+function formatTimeShort(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+</script>
+{% endblock %}

@@ -40,9 +40,15 @@
         </div>
     </div>
     <div class="preview-section">
+        {% if source_type == 'youtube' %}
+        <div id="youtube-player-container">
+            <div id="youtube-player"></div>
+        </div>
+        {% else %}
         <video id="preview-video" controls>
             <source src="/video" type="video/mp4">
         </video>
+        {% endif %}
         <div class="preview-info">
             <div class="preview-status" id="preview-status">
                 <span class="status-label">Status:</span>
@@ -151,14 +157,43 @@
     </div>
 </div>
 
-<!-- Compile Section -->
+<!-- Export Section -->
 <div class="compile-section">
+    <h3>Export Options</h3>
+    <div class="export-options">
+        <div class="export-option">
+            <h4>Export Timecodes</h4>
+            <p>Get timestamps for each highlight (instant)</p>
+            <button class="btn btn-secondary btn-large" onclick="exportTimecodes()">
+                Copy Timecodes
+            </button>
+        </div>
+        <div class="export-option">
+            <h4>Compile Video</h4>
+            <p>Generate a highlight video file{% if source_type == 'youtube' %} (downloads video first){% endif %}</p>
+            <button class="btn btn-primary btn-large" id="compile-btn" onclick="compileHighlights()">
+                Generate Video
+            </button>
+        </div>
+    </div>
+    {% if source_type == 'youtube' %}
+    <div class="compile-warning" id="compile-warning">
+        <strong>Note:</strong> Compiling requires downloading the YouTube video first, which may take some time.
+    </div>
+    {% else %}
     <div class="compile-warning" id="compile-warning">
         <strong>Note:</strong> Compilation may take a few minutes depending on video length.
     </div>
-    <button class="btn btn-primary btn-large" id="compile-btn" onclick="compileHighlights()">
-        Generate Highlight Video
-    </button>
+    {% endif %}
+</div>
+
+<!-- Timecodes Preview -->
+<div id="timecodes-section" class="card hidden">
+    <div class="card-header">
+        <h2>Timecodes</h2>
+        <button class="btn btn-secondary" onclick="copyTimecodes()">Copy to Clipboard</button>
+    </div>
+    <pre id="timecodes-output" class="timecodes-output"></pre>
 </div>
 
 <div id="progress-section" class="card hidden">
@@ -365,6 +400,19 @@
     border-radius: 8px;
 }
 
+#youtube-player-container {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#youtube-player {
+    width: 100%;
+    height: 100%;
+}
+
 .preview-info {
     display: flex;
     flex-direction: column;
@@ -552,12 +600,50 @@
     padding: 2rem;
 }
 
+.compile-section h3 {
+    margin-bottom: 1.5rem;
+}
+
+.export-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+}
+
+.export-option {
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.export-option h4 {
+    margin: 0 0 0.5rem 0;
+}
+
+.export-option p {
+    color: #6c757d;
+    margin: 0 0 1rem 0;
+    font-size: 0.875rem;
+}
+
 .compile-warning {
-    margin-bottom: 1rem;
+    margin-top: 1rem;
     padding: 1rem;
     background: #fff3cd;
     border-radius: 4px;
     color: #856404;
+}
+
+.timecodes-output {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.875rem;
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 .btn-large {
@@ -650,13 +736,121 @@ let isSimulating = false;
 let currentClipIndex = 0;
 let simulationClips = [];
 
-const video = document.getElementById('preview-video');
+// YouTube integration
+const isYouTube = {{ 'true' if source_type == 'youtube' else 'false' }};
+const youtubeVideoId = '{{ youtube_id or "" }}';
+let ytPlayer = null;
+let ytPlayerReady = false;
+let ytTimeUpdateInterval = null;
+
+// Video element (null for YouTube mode)
+const video = isYouTube ? null : document.getElementById('preview-video');
+
+// Unified video interface
+const VideoPlayer = {
+    getCurrentTime() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            return ytPlayer.getCurrentTime() || 0;
+        } else if (video) {
+            return video.currentTime;
+        }
+        return 0;
+    },
+    setCurrentTime(time) {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            ytPlayer.seekTo(time, true);
+        } else if (video) {
+            video.currentTime = time;
+        }
+    },
+    play() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            ytPlayer.playVideo();
+        } else if (video) {
+            video.play();
+        }
+    },
+    pause() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            ytPlayer.pauseVideo();
+        } else if (video) {
+            video.pause();
+        }
+    },
+    isPaused() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            return ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING;
+        } else if (video) {
+            return video.paused;
+        }
+        return true;
+    },
+    getDuration() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            return ytPlayer.getDuration() || videoDuration;
+        } else if (video) {
+            return video.duration || videoDuration;
+        }
+        return videoDuration;
+    }
+};
+
+// YouTube IFrame API setup
+if (isYouTube) {
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(tag);
+}
+
+function onYouTubeIframeAPIReady() {
+    ytPlayer = new YT.Player('youtube-player', {
+        videoId: youtubeVideoId,
+        playerVars: {
+            'autoplay': 0,
+            'controls': 1,
+            'modestbranding': 1,
+            'rel': 0,
+            'enablejsapi': 1,
+            'origin': window.location.origin
+        },
+        events: {
+            'onReady': onYTPlayerReady,
+            'onStateChange': onYTPlayerStateChange
+        }
+    });
+}
+
+function onYTPlayerReady(event) {
+    ytPlayerReady = true;
+    videoDuration = ytPlayer.getDuration();
+    renderTimeline();
+
+    // Start time update polling
+    ytTimeUpdateInterval = setInterval(() => {
+        if (ytPlayerReady && isSimulating) {
+            onVideoTimeUpdate();
+        }
+        // Update playhead
+        if (videoDuration > 0) {
+            const percent = (VideoPlayer.getCurrentTime() / videoDuration) * 100;
+            document.getElementById('preview-playhead').style.left = `${percent}%`;
+        }
+    }, 100);
+}
+
+function onYTPlayerStateChange(event) {
+    if (event.data === YT.PlayerState.ENDED) {
+        onVideoEnded();
+    }
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
     await loadRallies();
     await loadFeedbackSummary();
     restoreSelection();
-    setupVideoEvents();
+    if (!isYouTube) {
+        setupVideoEvents();
+    }
 });
 
 async function loadRallies() {
@@ -672,34 +866,34 @@ async function loadRallies() {
     // Sort by time
     allRallies.sort((a, b) => a.start_time - b.start_time);
 
-    // Wait for video metadata
-    video.onloadedmetadata = () => {
-        videoDuration = video.duration;
-        renderTimeline();
-    };
+    // Wait for video metadata (HTML5 only)
+    if (!isYouTube && video) {
+        video.onloadedmetadata = () => {
+            videoDuration = video.duration;
+            renderTimeline();
+        };
 
-    if (video.duration) {
-        videoDuration = video.duration;
-        renderTimeline();
+        if (video.duration) {
+            videoDuration = video.duration;
+            renderTimeline();
+        }
     }
 }
 
 function restoreSelection() {
-    const saved = sessionStorage.getItem('selectedRallies');
-    if (saved) {
-        const ids = JSON.parse(saved);
-        // Find rallies that are marked as highlight (not rejected)
-        selectedRallies = allRallies.filter(r =>
-            ids.includes(r.id) || r.is_highlight === true
-        );
-        // Also include rallies that haven't been rejected (pending)
-        if (selectedRallies.length === 0) {
-            selectedRallies = allRallies.filter(r => r.is_highlight !== false);
-        }
-        renderSelectedList();
-        renderTimeline();
-        updateTotalDuration();
-    }
+    // Only include rallies explicitly marked as "good" (is_highlight === true)
+    // Pending (null) and rejected (false) rallies are NOT selected
+    selectedRallies = allRallies.filter(r => r.is_highlight === true);
+
+    console.log('[DEBUG] restoreSelection:', {
+        totalRallies: allRallies.length,
+        selectedCount: selectedRallies.length,
+        sampleIsHighlight: allRallies.slice(0, 5).map(r => ({ id: r.id, is_highlight: r.is_highlight }))
+    });
+
+    renderSelectedList();
+    renderTimeline();
+    updateTotalDuration();
 }
 
 function renderTimeline() {
@@ -707,7 +901,7 @@ function renderTimeline() {
     const labels = document.getElementById('time-labels');
     timeline.innerHTML = '';
 
-    const duration = video.duration || videoDuration ||
+    const duration = VideoPlayer.getDuration() || videoDuration ||
         Math.max(...allRallies.map(r => r.end_time), 100);
 
     if (duration > 0) {
@@ -751,8 +945,8 @@ function renderTimeline() {
 }
 
 function seekToRally(rally) {
-    video.currentTime = rally.start_time;
-    video.play();
+    VideoPlayer.setCurrentTime(rally.start_time);
+    VideoPlayer.play();
 }
 
 async function autoSelect() {
@@ -908,7 +1102,7 @@ function startSimulation() {
 
 function stopSimulation() {
     isSimulating = false;
-    video.pause();
+    VideoPlayer.pause();
 
     // Update UI
     document.getElementById('simulate-btn').disabled = false;
@@ -947,14 +1141,14 @@ function playCurrentClip() {
     });
 
     // Seek and play from effective start (with context)
-    video.currentTime = clip.effective_start;
-    video.play();
+    VideoPlayer.setCurrentTime(clip.effective_start);
+    VideoPlayer.play();
 }
 
 function onVideoTimeUpdate() {
     // Update playhead position
     if (videoDuration > 0) {
-        const percent = (video.currentTime / videoDuration) * 100;
+        const percent = (VideoPlayer.getCurrentTime() / videoDuration) * 100;
         document.getElementById('preview-playhead').style.left = `${percent}%`;
     }
 
@@ -964,7 +1158,7 @@ function onVideoTimeUpdate() {
     if (!clip) return;
 
     // Check if we've reached the end of current clip (using effective_end with context)
-    if (video.currentTime >= clip.effective_end - 0.05) {
+    if (VideoPlayer.getCurrentTime() >= clip.effective_end - 0.05) {
         // Move to next clip
         currentClipIndex++;
 
@@ -1001,7 +1195,7 @@ function onVideoEnded() {
 
 function finishSimulation() {
     isSimulating = false;
-    video.pause();
+    VideoPlayer.pause();
 
     // Update UI
     document.getElementById('simulate-btn').disabled = false;
@@ -1156,6 +1350,47 @@ function toggleSidebar() {
     const toggle = document.querySelector('.sidebar-toggle');
     sidebar.classList.toggle('hidden');
     toggle.classList.toggle('sidebar-open');
+}
+
+// Export timecodes functions
+async function exportTimecodes() {
+    if (selectedRallies.length === 0) {
+        alert('No highlights selected. Please select some highlights first.');
+        return;
+    }
+
+    const rallyIds = selectedRallies.map(r => r.id || r.rally?.id).join('&rally_ids=');
+    const url = `/api/export-timecodes?rally_ids=${rallyIds}`;
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.timecodes) {
+            // Show timecodes section
+            document.getElementById('timecodes-section').classList.remove('hidden');
+            document.getElementById('timecodes-output').textContent = data.timecodes;
+
+            // Copy to clipboard
+            await navigator.clipboard.writeText(data.timecodes);
+            alert(`${data.count} timecodes copied to clipboard!`);
+        }
+    } catch (error) {
+        alert('Error exporting timecodes: ' + error.message);
+    }
+}
+
+function copyTimecodes() {
+    const timecodes = document.getElementById('timecodes-output').textContent;
+    navigator.clipboard.writeText(timecodes).then(() => {
+        alert('Timecodes copied to clipboard!');
+    });
+}
+
+function formatTimeCompact(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = (seconds % 60).toFixed(2);
+    return `${mins}:${secs.padStart(5, '0')}`;
 }
 </script>
 {% endblock %}

@@ -17,11 +17,155 @@
 
 <!-- Analysis Status -->
 <div id="analysis-status" class="card hidden">
-    <div class="status-panel">
-        <div class="spinner"></div>
-        <span id="status-text">Analyzing video...</span>
+    <div class="analysis-progress">
+        <h3>Analyzing Video</h3>
+
+        <!-- Step 1: Download Audio -->
+        <div class="progress-step" id="step-download-audio">
+            <div class="step-header">
+                <div class="step-indicator">
+                    <div class="spinner-small"></div>
+                    <span class="step-check hidden">✓</span>
+                </div>
+                <span class="step-title">Downloading Audio</span>
+                <span class="step-status"></span>
+            </div>
+            <div class="progress-bar-small">
+                <div class="progress-fill-small"></div>
+            </div>
+        </div>
+
+        <!-- Step 2: Analyze Audio -->
+        <div class="progress-step" id="step-analyze-audio">
+            <div class="step-header">
+                <div class="step-indicator">
+                    <div class="spinner-small"></div>
+                    <span class="step-check hidden">✓</span>
+                </div>
+                <span class="step-title">Analyzing Audio</span>
+                <span class="step-status"></span>
+            </div>
+            <div class="progress-bar-small">
+                <div class="progress-fill-small"></div>
+            </div>
+        </div>
+
+        <!-- Step 3: Detect Rallies -->
+        <div class="progress-step" id="step-detect-rallies">
+            <div class="step-header">
+                <div class="step-indicator">
+                    <div class="spinner-small"></div>
+                    <span class="step-check hidden">✓</span>
+                </div>
+                <span class="step-title">Detecting Rallies</span>
+                <span class="step-status"></span>
+            </div>
+            <div class="progress-bar-small">
+                <div class="progress-fill-small"></div>
+            </div>
+        </div>
     </div>
 </div>
+
+<style>
+.analysis-progress {
+    padding: 1.5rem;
+}
+
+.analysis-progress h3 {
+    margin: 0 0 1.5rem 0;
+    text-align: center;
+}
+
+.progress-step {
+    margin-bottom: 1.25rem;
+    opacity: 0.4;
+    transition: opacity 0.3s;
+}
+
+.progress-step.active {
+    opacity: 1;
+}
+
+.progress-step.complete {
+    opacity: 1;
+}
+
+.progress-step.complete .spinner-small {
+    display: none;
+}
+
+.progress-step.complete .step-check {
+    display: inline;
+    color: #28a745;
+    font-weight: bold;
+}
+
+.step-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.step-indicator {
+    width: 24px;
+    display: flex;
+    justify-content: center;
+}
+
+.spinner-small {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #e9ecef;
+    border-top-color: #007bff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: none;
+}
+
+.progress-step.active .spinner-small {
+    display: block;
+}
+
+.step-check {
+    font-size: 1.1rem;
+}
+
+.step-title {
+    flex: 1;
+    font-weight: 500;
+}
+
+.step-status {
+    font-size: 0.875rem;
+    color: #6c757d;
+}
+
+.progress-bar-small {
+    height: 4px;
+    background: #e9ecef;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-left: 32px;
+}
+
+.progress-fill-small {
+    height: 100%;
+    background: #007bff;
+    width: 0%;
+    transition: width 0.3s;
+}
+
+.progress-step.complete .progress-fill-small {
+    width: 100%;
+    background: #28a745;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+</style>
 
 <!-- Video Info (shown after analysis) -->
 <div id="video-info" class="card hidden">
@@ -85,9 +229,15 @@
         <!-- Video Player -->
         <div class="card">
             <div class="video-section">
+                {% if source_type == 'youtube' %}
+                <div id="youtube-player-container">
+                    <div id="youtube-player"></div>
+                </div>
+                {% else %}
                 <video id="main-video" controls>
                     <source src="/video" type="video/mp4">
                 </video>
+                {% endif %}
                 <div class="current-rally-info">
                     <h3 id="current-rally-title">Select a rally</h3>
                     <div class="rally-meta">
@@ -450,6 +600,9 @@
     border-radius: 2px;
     transition: opacity 0.2s, transform 0.2s;
     cursor: pointer;
+    box-sizing: border-box;
+    border: 1px solid rgba(0,0,0,0.2);
+    min-width: 3px;
 }
 
 .timeline-segment.keep {
@@ -470,12 +623,13 @@
 .timeline-segment.current {
     opacity: 1;
     box-shadow: 0 0 0 3px #ffc107;
-    z-index: 10;
+    z-index: 1000 !important;  /* Always on top of other segments */
 }
 
 .timeline-segment:hover {
     opacity: 1;
     transform: scaleY(1.1);
+    z-index: 500 !important;  /* Above other segments but below current */
 }
 
 /* Drag Handles */
@@ -624,6 +778,19 @@
     width: 100%;
     background: #000;
     border-radius: 8px;
+}
+
+#youtube-player-container {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#youtube-player {
+    width: 100%;
+    height: 100%;
 }
 
 .current-rally-info {
@@ -1001,6 +1168,13 @@ let dragStartX = 0;
 let dragStartFrame = 0;
 let analysisComplete = false;
 
+// YouTube integration
+const isYouTube = {{ 'true' if source_type == 'youtube' else 'false' }};
+const youtubeVideoId = '{{ youtube_id or "" }}';
+let ytPlayer = null;
+let ytPlayerReady = false;
+let ytTimeUpdateInterval = null;
+
 // Frame <-> Time conversion helpers
 function frameToTime(frame) {
     return frame / videoFps;
@@ -1010,12 +1184,145 @@ function timeToFrame(time) {
     return Math.round(time * videoFps);
 }
 
-const video = document.getElementById('main-video');
+// Video abstraction - works for both YouTube and HTML5 video
+const video = isYouTube ? null : document.getElementById('main-video');
+
+// Unified video interface
+const VideoPlayer = {
+    getCurrentTime() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            return ytPlayer.getCurrentTime() || 0;
+        } else if (video) {
+            return video.currentTime;
+        }
+        return 0;
+    },
+    setCurrentTime(time) {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            ytPlayer.seekTo(time, true);
+        } else if (video) {
+            video.currentTime = time;
+        }
+    },
+    play() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            ytPlayer.playVideo();
+        } else if (video) {
+            video.play();
+        }
+    },
+    pause() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            ytPlayer.pauseVideo();
+        } else if (video) {
+            video.pause();
+        }
+    },
+    isPaused() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            return ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING;
+        } else if (video) {
+            return video.paused;
+        }
+        return true;
+    },
+    getDuration() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            return ytPlayer.getDuration() || videoDuration;
+        } else if (video) {
+            return video.duration || videoDuration;
+        }
+        return videoDuration;
+    },
+    getPlaybackRate() {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            return ytPlayer.getPlaybackRate() || 1;
+        } else if (video) {
+            return video.playbackRate;
+        }
+        return 1;
+    },
+    setPlaybackRate(rate) {
+        if (isYouTube && ytPlayer && ytPlayerReady) {
+            ytPlayer.setPlaybackRate(rate);
+        } else if (video) {
+            video.playbackRate = rate;
+        }
+    }
+};
+
+// YouTube IFrame API setup
+if (isYouTube) {
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(tag);
+}
+
+function onYouTubeIframeAPIReady() {
+    ytPlayer = new YT.Player('youtube-player', {
+        videoId: youtubeVideoId,
+        playerVars: {
+            'autoplay': 0,
+            'controls': 1,
+            'modestbranding': 1,
+            'rel': 0,
+            'enablejsapi': 1,
+            'origin': window.location.origin
+        },
+        events: {
+            'onReady': onYTPlayerReady,
+            'onStateChange': onYTPlayerStateChange
+        }
+    });
+}
+
+function onYTPlayerReady(event) {
+    ytPlayerReady = true;
+    videoDuration = ytPlayer.getDuration();
+    renderTimeline();
+
+    // Start time update polling (YouTube has no timeupdate event)
+    ytTimeUpdateInterval = setInterval(() => {
+        if (ytPlayerReady) {
+            updatePositionDisplay();
+            checkBoundaryPause();
+        }
+    }, 100);
+}
+
+function onYTPlayerStateChange(event) {
+    if (event.data === YT.PlayerState.PLAYING) {
+        if (currentIndex >= 0 && window.pausedAtBoundary) {
+            const rally = rallies[currentIndex];
+            const endTime = rally.end_frame / videoFps;
+            if (VideoPlayer.getCurrentTime() >= endTime - 0.1) {
+                deselectRally();
+            }
+        }
+        window.pausedAtBoundary = false;
+    }
+}
+
+function checkBoundaryPause() {
+    if (currentIndex >= 0 && !VideoPlayer.isPaused() && !window.pausedAtBoundary) {
+        const rally = rallies[currentIndex];
+        const endTime = rally.end_frame / videoFps;
+        if (VideoPlayer.getCurrentTime() >= endTime - 0.05) {
+            VideoPlayer.setCurrentTime(endTime);
+            VideoPlayer.pause();
+            window.pausedAtBoundary = true;
+        }
+    }
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
     await checkExistingAnalysis();
     setupKeyboardShortcuts();
-    setupVideoEvents();
+    if (!isYouTube) {
+        setupVideoEvents();
+    } else {
+        setupYouTubeEvents();
+    }
     setupRatingClicks();
 });
 
@@ -1034,47 +1341,207 @@ async function checkExistingAnalysis() {
                 videoFps = rallies[0].fps;
             }
 
-            // Hide analyze button, show data
+            // Calculate video duration from rallies if not set
+            if (!videoDuration && rallies.length > 0) {
+                videoDuration = Math.max(...rallies.map(r => r.end_time)) + 10; // Add buffer
+            }
+
+            // Hide analyze button, show video info
             document.getElementById('analyze-btn').style.display = 'none';
+
+            // Show video info card with available data
+            const info = document.getElementById('video-info');
+            info.classList.remove('hidden');
+            document.getElementById('duration-value').textContent = formatTime(videoDuration);
+            document.getElementById('resolution-value').textContent = isYouTube ? 'N/A' : '--';
+            document.getElementById('hits-value').textContent = rallies.reduce((sum, r) => sum + (r.hit_count || 0), 0);
+            document.getElementById('rallies-value').textContent = rallies.length;
 
             // Load volume data for waveform
             await loadVolumeData();
 
             // Setup video duration
-            video.onloadedmetadata = () => {
-                videoDuration = video.duration;
-                renderTimeline();
-            };
+            if (!isYouTube && video) {
+                video.onloadedmetadata = () => {
+                    videoDuration = video.duration;
+                    renderTimeline();
+                };
+            }
 
             renderTimeline();
             renderList();
             updateStats();
 
-            // Auto-select first rally
+            // Auto-select first rally (delay for YouTube to be ready)
             if (rallies.length > 0) {
-                selectRally(0);
+                if (isYouTube) {
+                    // Wait for YouTube player to be ready
+                    const waitForYT = setInterval(() => {
+                        if (ytPlayerReady) {
+                            clearInterval(waitForYT);
+                            selectRally(0);
+                        }
+                    }, 100);
+                } else {
+                    selectRally(0);
+                }
             }
         }
     } catch (e) {
-        // No existing analysis, show analyze button
+        // No existing analysis
     }
+
+    // Auto-start analysis if no rallies exist
+    if (!analysisComplete) {
+        console.log('[AUTO] No existing analysis, starting automatically...');
+        startAnalysis();
+    }
+}
+
+function setupYouTubeEvents() {
+    // Click on timeline bar (not segments) to seek
+    document.getElementById('timeline').addEventListener('click', (e) => {
+        if (e.target.id !== 'timeline') return;
+
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const percent = x / rect.width;
+        const time = percent * videoDuration;
+
+        // Find closest rally
+        let closestIndex = 0;
+        let closestDist = Infinity;
+        rallies.forEach((rally, i) => {
+            const mid = (rally.start_time + rally.end_time) / 2;
+            const dist = Math.abs(mid - time);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestIndex = i;
+            }
+        });
+
+        selectRally(closestIndex);
+    });
+
+    // Cmd/Ctrl + scroll to zoom timeline
+    const timelineScroll = document.getElementById('timeline-scroll');
+    timelineScroll.addEventListener('wheel', (e) => {
+        if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            if (e.deltaY < 0) {
+                zoomIn();
+            } else {
+                zoomOut();
+            }
+        }
+    }, { passive: false });
+
+    // Draggable playhead
+    setupPlayheadDrag();
 }
 
 async function startAnalysis() {
     const btn = document.getElementById('analyze-btn');
     const statusDiv = document.getElementById('analysis-status');
-    const statusText = document.getElementById('status-text');
 
     btn.disabled = true;
+    btn.style.display = 'none';
     statusDiv.classList.remove('hidden');
 
+    const stepDownload = document.getElementById('step-download-audio');
+    const stepAnalyze = document.getElementById('step-analyze-audio');
+    const stepDetect = document.getElementById('step-detect-rallies');
+
+    // Helper to update step status
+    function setStepActive(stepEl, status = '') {
+        stepEl.classList.add('active');
+        stepEl.classList.remove('complete');
+        stepEl.querySelector('.step-status').textContent = status;
+    }
+
+    function setStepComplete(stepEl, status = '') {
+        stepEl.classList.remove('active');
+        stepEl.classList.add('complete');
+        stepEl.querySelector('.step-status').textContent = status;
+    }
+
+    function setStepProgress(stepEl, percent) {
+        stepEl.querySelector('.progress-fill-small').style.width = `${percent}%`;
+    }
+
     try {
-        statusText.textContent = 'Extracting audio and analyzing...';
+        // Step 1: Download Audio
+        setStepActive(stepDownload, isYouTube ? 'Checking cache...' : 'Extracting...');
 
+        // Check if audio is cached (for YouTube)
+        if (isYouTube) {
+            try {
+                const cacheResp = await fetch('/api/cache-status');
+                const cacheData = await cacheResp.json();
+                if (cacheData.audio_cached) {
+                    setStepActive(stepDownload, 'Using cached audio');
+                    setStepProgress(stepDownload, 100);
+                    await new Promise(r => setTimeout(r, 500));
+                    setStepComplete(stepDownload, 'Cached');
+                } else {
+                    setStepActive(stepDownload, 'Downloading from YouTube...');
+                    // Simulate progress while downloading
+                    let downloadProgress = 0;
+                    const downloadInterval = setInterval(() => {
+                        downloadProgress = Math.min(downloadProgress + 5, 90);
+                        setStepProgress(stepDownload, downloadProgress);
+                    }, 500);
+
+                    // Download will happen during analyze call
+                    stepDownload._interval = downloadInterval;
+                }
+            } catch (e) {
+                setStepActive(stepDownload, 'Downloading...');
+            }
+        } else {
+            setStepProgress(stepDownload, 100);
+            setStepComplete(stepDownload, 'Ready');
+        }
+
+        // Step 2: Analyze Audio (happens during API call)
+        setStepActive(stepAnalyze, 'Processing...');
+        let analyzeProgress = 0;
+        const analyzeInterval = setInterval(() => {
+            analyzeProgress = Math.min(analyzeProgress + 3, 85);
+            setStepProgress(stepAnalyze, analyzeProgress);
+        }, 300);
+
+        // Make the API call
+        console.log('[Analysis] Starting API call...');
         const response = await fetch('/api/analyze', { method: 'POST' });
+        console.log('[Analysis] API response status:', response.status);
         const data = await response.json();
+        console.log('[Analysis] API data:', data);
 
-        if (!response.ok) throw new Error(data.error);
+        // Clear intervals
+        if (stepDownload._interval) clearInterval(stepDownload._interval);
+        clearInterval(analyzeInterval);
+
+        if (!response.ok) throw new Error(data.error || 'Analysis failed');
+
+        // Complete Step 1
+        console.log('[Analysis] Completing step 1...');
+        setStepProgress(stepDownload, 100);
+        setStepComplete(stepDownload, isYouTube ? 'Downloaded' : 'Extracted');
+
+        // Complete Step 2
+        console.log('[Analysis] Completing step 2...');
+        setStepProgress(stepAnalyze, 100);
+        setStepComplete(stepAnalyze, `${data.num_ball_hits || 0} hits found`);
+
+        // Step 3: Detect Rallies
+        console.log('[Analysis] Starting step 3...');
+        setStepActive(stepDetect, 'Grouping into rallies...');
+        setStepProgress(stepDetect, 50);
+        await new Promise(r => setTimeout(r, 300));
+        setStepProgress(stepDetect, 100);
+        setStepComplete(stepDetect, `${data.num_rallies || 0} rallies detected`);
+        console.log('[Analysis] All steps complete!');
 
         // Show video info
         const info = document.getElementById('video-info');
@@ -1082,8 +1549,12 @@ async function startAnalysis() {
 
         document.getElementById('duration-value').textContent =
             formatTime(data.metadata.duration);
-        document.getElementById('resolution-value').textContent =
-            `${data.metadata.width}x${data.metadata.height}`;
+        if (data.metadata.width && data.metadata.height) {
+            document.getElementById('resolution-value').textContent =
+                `${data.metadata.width}x${data.metadata.height}`;
+        } else {
+            document.getElementById('resolution-value').textContent = 'N/A';
+        }
         document.getElementById('hits-value').textContent = data.num_ball_hits;
         document.getElementById('rallies-value').textContent = data.num_rallies;
 
@@ -1092,13 +1563,12 @@ async function startAnalysis() {
         totalFrames = data.metadata.frame_count;
 
         // Load volume data and rallies
-        statusText.textContent = 'Loading visualization...';
         await loadVolumeData();
         await loadRallies();
 
-        // Hide status, show timeline
+        // Hide status after a moment
+        await new Promise(r => setTimeout(r, 800));
         statusDiv.classList.add('hidden');
-        btn.style.display = 'none';
         analysisComplete = true;
 
         // Auto-select first rally
@@ -1107,7 +1577,13 @@ async function startAnalysis() {
         }
 
     } catch (error) {
-        statusText.textContent = 'Error: ' + error.message;
+        // Show error
+        const stepActive = document.querySelector('.progress-step.active');
+        if (stepActive) {
+            stepActive.querySelector('.step-status').textContent = 'Error: ' + error.message;
+            stepActive.querySelector('.progress-fill-small').style.background = '#dc3545';
+        }
+        btn.style.display = 'block';
         btn.disabled = false;
     }
 }
@@ -1168,11 +1644,13 @@ async function loadRallies() {
     // Sort by time (start_time)
     rallies.sort((a, b) => a.start_time - b.start_time);
 
-    // Get video duration
-    video.onloadedmetadata = () => {
-        videoDuration = video.duration;
-        renderTimeline();
-    };
+    // Get video duration (HTML5 video only)
+    if (!isYouTube && video) {
+        video.onloadedmetadata = () => {
+            videoDuration = video.duration;
+            renderTimeline();
+        };
+    }
 
     renderTimeline();
     renderList();
@@ -1186,7 +1664,7 @@ function renderTimeline() {
     timeline.innerHTML = '';
 
     // Always prefer actual video duration - update global and use local
-    const duration = video.duration || videoDuration || Math.max(...rallies.map(r => r.end_time), 100);
+    const duration = VideoPlayer.getDuration() || videoDuration || Math.max(...rallies.map(r => r.end_time), 100);
     videoDuration = duration; // Always sync global with current best value
 
     // Apply zoom
@@ -1215,7 +1693,8 @@ function renderTimeline() {
         const width = ((rally.end_time - rally.start_time) / duration) * 100;
 
         segment.style.left = `${left}%`;
-        segment.style.width = `${Math.max(width, 0.5)}%`;
+        segment.style.width = `${Math.max(width, 0.1)}%`;  // Reduced min-width to avoid visual overlap
+        segment.style.zIndex = i + 1;  // Later segments render on top
         segment.title = `#${i + 1}: ${formatTime(rally.start_time)} - ${formatTime(rally.end_time)}`;
 
         // Add drag handles
@@ -1445,8 +1924,8 @@ function selectRally(index) {
 
     // Seek video (use frame-based calculation, with 0.5s lead-in)
     const startTime = rally.start_frame / videoFps;
-    video.currentTime = Math.max(0, startTime - 0.5);
-    video.play();
+    VideoPlayer.setCurrentTime(Math.max(0, startTime - 0.5));
+    VideoPlayer.play();
 
     renderTimeline();
     renderList();
@@ -1567,46 +2046,51 @@ async function markBad() {
 }
 
 function goNext() {
-    const currentTime = video.currentTime;
-    // Find the next rally that starts after current position
-    let nextIndex = -1;
+    if (rallies.length === 0) return;
+
+    // If a rally is selected, go to the next one by index
+    if (currentIndex >= 0) {
+        const nextIndex = Math.min(currentIndex + 1, rallies.length - 1);
+        if (nextIndex !== currentIndex) {
+            selectRally(nextIndex);
+        }
+        return;
+    }
+
+    // No rally selected - find the first rally after current time
+    const currentTime = VideoPlayer.getCurrentTime();
+    let nextIndex = 0;
     for (let i = 0; i < rallies.length; i++) {
-        if (rallies[i].start_time > currentTime + 0.1) {
+        if (rallies[i].start_time > currentTime) {
             nextIndex = i;
             break;
         }
     }
-    // If no rally found after current position, stay at last
-    if (nextIndex === -1 && rallies.length > 0) {
-        nextIndex = rallies.length - 1;
-    }
-    if (nextIndex >= 0) {
-        selectRally(nextIndex);
-    }
+    selectRally(nextIndex);
 }
 
 function goPrev() {
-    const currentTime = video.currentTime;
-    // Find the previous rally that ends before current position
-    let prevIndex = -1;
+    if (rallies.length === 0) return;
+
+    // If a rally is selected, go to the previous one by index
+    if (currentIndex >= 0) {
+        const prevIndex = Math.max(currentIndex - 1, 0);
+        if (prevIndex !== currentIndex) {
+            selectRally(prevIndex);
+        }
+        return;
+    }
+
+    // No rally selected - find the last rally before current time
+    const currentTime = VideoPlayer.getCurrentTime();
+    let prevIndex = rallies.length - 1;
     for (let i = rallies.length - 1; i >= 0; i--) {
-        if (rallies[i].end_time < currentTime - 0.1) {
-            prevIndex = i;
-            break;
-        }
-        // Also select if we're in the middle of a rally and want to go to its start
-        if (rallies[i].start_time < currentTime - 0.5 && rallies[i].end_time >= currentTime) {
+        if (rallies[i].end_time < currentTime) {
             prevIndex = i;
             break;
         }
     }
-    // If no rally found before current position, go to first
-    if (prevIndex === -1 && rallies.length > 0) {
-        prevIndex = 0;
-    }
-    if (prevIndex >= 0) {
-        selectRally(prevIndex);
-    }
+    selectRally(prevIndex);
 }
 
 function updateStats() {
@@ -1637,7 +2121,7 @@ const PIXELS_PER_SECOND_AT_MAX_ZOOM = 96; // 1 inch = 96px = 1 second at max zoo
 
 function getMaxZoom() {
     const container = document.getElementById('timeline-scroll');
-    const duration = video.duration || videoDuration;
+    const duration = VideoPlayer.getDuration() || videoDuration;
     if (!container || !duration) return 64;
     const containerWidth = container.clientWidth;
     // At max zoom: duration * 96px = total width
@@ -1683,8 +2167,9 @@ function applyZoom() {
 function addMissedRally() {
     document.getElementById('add-rally-modal').classList.remove('hidden');
     // Pre-fill with current video time
-    document.getElementById('new-start').value = Math.floor(video.currentTime * 10) / 10;
-    document.getElementById('new-end').value = Math.floor((video.currentTime + 5) * 10) / 10;
+    const currentTime = VideoPlayer.getCurrentTime();
+    document.getElementById('new-start').value = Math.floor(currentTime * 10) / 10;
+    document.getElementById('new-end').value = Math.floor((currentTime + 5) * 10) / 10;
 }
 
 function closeAddModal() {
@@ -1768,8 +2253,8 @@ function setupKeyboardShortcuts() {
 
             case ' ':
                 e.preventDefault();
-                if (video.paused) video.play();
-                else video.pause();
+                if (VideoPlayer.isPaused()) VideoPlayer.play();
+                else VideoPlayer.pause();
                 break;
 
             case '+':
@@ -1843,13 +2328,13 @@ function seekToBoundary(boundary) {
     if (currentIndex < 0) return;
 
     const rally = rallies[currentIndex];
-    video.pause();
+    VideoPlayer.pause();
 
     if (boundary === 'start') {
         // Use frame-based calculation for precision
-        video.currentTime = rally.start_frame / videoFps;
+        VideoPlayer.setCurrentTime(rally.start_frame / videoFps);
     } else {
-        video.currentTime = rally.end_frame / videoFps;
+        VideoPlayer.setCurrentTime(rally.end_frame / videoFps);
     }
 
     updatePositionDisplay();
@@ -1860,26 +2345,29 @@ function replayRally() {
 
     const rally = rallies[currentIndex];
     window.pausedAtBoundary = false;
-    video.currentTime = rally.start_frame / videoFps;
-    video.play();
+    VideoPlayer.setCurrentTime(rally.start_frame / videoFps);
+    VideoPlayer.play();
 }
 
 function increasePlaybackSpeed() {
-    const newRate = Math.min(video.playbackRate + 0.1, 4.0);
-    video.playbackRate = Math.round(newRate * 10) / 10; // Round to 1 decimal
+    const currentRate = VideoPlayer.getPlaybackRate();
+    const newRate = Math.min(currentRate + 0.1, 4.0);
+    VideoPlayer.setPlaybackRate(Math.round(newRate * 10) / 10); // Round to 1 decimal
     updatePlaybackSpeedDisplay();
 }
 
 function decreasePlaybackSpeed() {
-    const newRate = Math.max(video.playbackRate - 0.1, 0.1);
-    video.playbackRate = Math.round(newRate * 10) / 10; // Round to 1 decimal
+    const currentRate = VideoPlayer.getPlaybackRate();
+    const newRate = Math.max(currentRate - 0.1, 0.1);
+    VideoPlayer.setPlaybackRate(Math.round(newRate * 10) / 10); // Round to 1 decimal
     updatePlaybackSpeedDisplay();
 }
 
 function updatePlaybackSpeedDisplay() {
     const speedEl = document.getElementById('playback-speed');
     if (speedEl) {
-        speedEl.textContent = `${video.playbackRate.toFixed(1)}x`;
+        const rate = VideoPlayer.getPlaybackRate();
+        speedEl.textContent = `${rate.toFixed(1)}x`;
     }
 }
 
@@ -1894,7 +2382,7 @@ async function setStartToCurrentPosition() {
     if (currentIndex < 0) return;
 
     const rally = rallies[currentIndex];
-    const currentFrame = timeToFrame(video.currentTime);
+    const currentFrame = timeToFrame(VideoPlayer.getCurrentTime());
     const minDurationFrames = Math.round(1.0 * videoFps);
 
     // Don't let start go past end - minDuration
@@ -1921,7 +2409,7 @@ async function setEndToCurrentPosition() {
     if (currentIndex < 0) return;
 
     const rally = rallies[currentIndex];
-    const currentFrame = timeToFrame(video.currentTime);
+    const currentFrame = timeToFrame(VideoPlayer.getCurrentTime());
     const minDurationFrames = Math.round(1.0 * videoFps);
 
     // Don't let end go before start + minDuration
@@ -1948,7 +2436,7 @@ async function adjustBoundaryAtCurrentPosition(deltaFrames) {
     if (currentIndex < 0) return;
 
     const rally = rallies[currentIndex];
-    const currentFrame = timeToFrame(video.currentTime);
+    const currentFrame = timeToFrame(VideoPlayer.getCurrentTime());
     const startFrame = rally.start_frame;
     const endFrame = rally.end_frame;
 
@@ -1967,7 +2455,7 @@ async function adjustBoundaryAtCurrentPosition(deltaFrames) {
 async function adjustBoundaryByFrames(boundary, deltaFrames) {
     if (currentIndex < 0) return;
 
-    video.pause();
+    VideoPlayer.pause();
 
     const rally = rallies[currentIndex];
     const minDurationFrames = Math.round(1.0 * videoFps); // Minimum 1 second
@@ -1991,8 +2479,8 @@ async function adjustBoundaryByFrames(boundary, deltaFrames) {
     }
 
     // Jump to the adjusted frame and pause
-    video.currentTime = jumpToFrame / videoFps;
-    video.pause();
+    VideoPlayer.setCurrentTime(jumpToFrame / videoFps);
+    VideoPlayer.pause();
 
     // Update duration
     rally.duration = rally.end_time - rally.start_time;
@@ -2051,35 +2539,37 @@ function setupVideoEvents() {
         selectRally(closestIndex);
     });
 
-    // Update position display during playback
-    video.addEventListener('timeupdate', updatePositionDisplay);
-    video.addEventListener('seeked', updatePositionDisplay);
+    // Update position display during playback (HTML5 video only)
+    if (video) {
+        video.addEventListener('timeupdate', updatePositionDisplay);
+        video.addEventListener('seeked', updatePositionDisplay);
 
-    // Pause at rally end boundary, deselect if resumed past it
-    video.addEventListener('timeupdate', () => {
-        if (currentIndex >= 0 && !video.paused && !window.pausedAtBoundary) {
-            const rally = rallies[currentIndex];
-            const endTime = rally.end_frame / videoFps;
-            // If we've reached the rally end, pause at boundary
-            if (video.currentTime >= endTime - 0.05) {
-                video.currentTime = endTime;
-                video.pause();
-                window.pausedAtBoundary = true;
+        // Pause at rally end boundary, deselect if resumed past it
+        video.addEventListener('timeupdate', () => {
+            if (currentIndex >= 0 && !video.paused && !window.pausedAtBoundary) {
+                const rally = rallies[currentIndex];
+                const endTime = rally.end_frame / videoFps;
+                // If we've reached the rally end, pause at boundary
+                if (video.currentTime >= endTime - 0.05) {
+                    video.currentTime = endTime;
+                    video.pause();
+                    window.pausedAtBoundary = true;
+                }
             }
-        }
-    });
+        });
 
-    video.addEventListener('play', () => {
-        if (currentIndex >= 0 && window.pausedAtBoundary) {
-            const rally = rallies[currentIndex];
-            const endTime = rally.end_frame / videoFps;
-            // If resuming play while at/past the boundary, deselect and continue
-            if (video.currentTime >= endTime - 0.1) {
-                deselectRally();
+        video.addEventListener('play', () => {
+            if (currentIndex >= 0 && window.pausedAtBoundary) {
+                const rally = rallies[currentIndex];
+                const endTime = rally.end_frame / videoFps;
+                // If resuming play while at/past the boundary, deselect and continue
+                if (video.currentTime >= endTime - 0.1) {
+                    deselectRally();
+                }
             }
-        }
-        window.pausedAtBoundary = false;
-    });
+            window.pausedAtBoundary = false;
+        });
+    }
 
     // Cmd/Ctrl + scroll to zoom timeline
     const timelineScroll = document.getElementById('timeline-scroll');
@@ -2111,7 +2601,7 @@ function setupPlayheadDrag() {
             e.stopPropagation();
             isPlayheadDragging = true;
             playhead.classList.add('dragging');
-            video.pause();
+            VideoPlayer.pause();
 
             document.addEventListener('mousemove', onPlayheadDrag);
             document.addEventListener('mouseup', endPlayheadDrag);
@@ -2132,7 +2622,7 @@ function onPlayheadDrag(e) {
     const percent = x / rect.width;
     const newTime = percent * videoDuration;
 
-    video.currentTime = newTime;
+    VideoPlayer.setCurrentTime(newTime);
     updatePositionDisplay();
 }
 
@@ -2149,7 +2639,7 @@ function endPlayheadDrag() {
 
 function updatePositionDisplay() {
     const positionEl = document.getElementById('current-position');
-    positionEl.textContent = formatTimePrecise(video.currentTime);
+    positionEl.textContent = formatTimePrecise(VideoPlayer.getCurrentTime());
 
     // Update playhead position on timeline
     updatePlayheadPosition();
@@ -2161,10 +2651,9 @@ function updatePositionDisplay() {
 function updatePlayheadPosition() {
     const playhead = document.getElementById('playhead');
     const timeline = document.getElementById('timeline');
-    // Always use video.duration directly for accuracy
-    const duration = video.duration || videoDuration;
+    const duration = VideoPlayer.getDuration() || videoDuration;
     if (playhead && timeline && duration > 0) {
-        const percent = (video.currentTime / duration) * 100;
+        const percent = (VideoPlayer.getCurrentTime() / duration) * 100;
         playhead.style.left = `${percent}%`;
     }
 }
@@ -2174,7 +2663,7 @@ function ensurePlayheadVisible() {
 
     const scrollContainer = document.getElementById('timeline-scroll');
     const content = document.getElementById('timeline-content');
-    const duration = video.duration || videoDuration;
+    const duration = VideoPlayer.getDuration() || videoDuration;
     if (!scrollContainer || !content || !duration) return;
 
     const contentWidth = content.offsetWidth;
@@ -2182,7 +2671,7 @@ function ensurePlayheadVisible() {
     const scrollLeft = scrollContainer.scrollLeft;
 
     // Calculate playhead position in pixels
-    const playheadPercent = video.currentTime / duration;
+    const playheadPercent = VideoPlayer.getCurrentTime() / duration;
     const playheadX = playheadPercent * contentWidth;
 
     // Visible range
