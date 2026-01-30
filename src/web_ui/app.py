@@ -14,6 +14,7 @@ from ..highlight_scorer import HighlightScorer, ScoredRally
 from ..preference_learner import PreferenceLearner
 from ..video_compiler import VideoCompiler, CompilationConfig
 from ..highlight_detector import Highlight, create_highlight, convert_rally_to_highlight
+from ..description_parser import format_highlights_for_description, parse_highlights_from_description
 
 
 def create_app(
@@ -231,6 +232,9 @@ def create_app(
         app.state["highlights"] = []
         app.state["highlight_counter"] = 0
 
+        # Parse highlights from video description
+        description_highlights = parse_highlights_from_description(metadata.description)
+
         return jsonify({
             "success": True,
             "video_id": video_id,
@@ -238,6 +242,7 @@ def create_app(
             "duration": metadata.duration,
             "thumbnail": metadata.thumbnail,
             "redirect": url_for("editor"),
+            "description_highlights": description_highlights,
         })
 
     @app.route("/api/youtube-info")
@@ -482,6 +487,62 @@ def create_app(
         return jsonify({
             "timecodes": timecodes,
             "count": len(selected),
+        })
+
+    @app.route("/api/export-highlight-description")
+    def export_highlight_description():
+        """Export highlights formatted for a YouTube video description."""
+        highlight_ids = request.args.getlist("highlight_ids")
+        highlights = app.state.get("highlights", [])
+
+        if highlight_ids:
+            selected = [h for h in highlights if h.id in highlight_ids]
+        else:
+            selected = highlights
+
+        selected = sorted(selected, key=lambda h: h.start_time)
+
+        highlight_dicts = [{"start_time": h.start_time, "end_time": h.end_time} for h in selected]
+        text = format_highlights_for_description(highlight_dicts)
+
+        return jsonify({
+            "text": text,
+            "count": len(selected),
+        })
+
+    @app.route("/api/import-from-description", methods=["POST"])
+    def import_from_description():
+        """Import highlights parsed from a video description."""
+        data = request.get_json()
+        parsed_highlights = data.get("highlights", [])
+
+        if not parsed_highlights:
+            return jsonify({"error": "No highlights provided"}), 400
+
+        new_highlights = []
+        for h in parsed_highlights:
+            start = h.get("start_time")
+            end = h.get("end_time")
+            if start is None or end is None or start >= end:
+                continue
+
+            app.state["highlight_counter"] += 1
+            highlight = create_highlight(
+                start_time=float(start),
+                end_time=float(end),
+                index=app.state["highlight_counter"],
+                source="description",
+            )
+            new_highlights.append(highlight)
+
+        app.state["highlights"].extend(new_highlights)
+        app.state["highlights"].sort(key=lambda h: h.start_time)
+
+        return jsonify({
+            "success": True,
+            "imported_count": len(new_highlights),
+            "total_count": len(app.state["highlights"]),
+            "highlights": [h.to_dict() for h in app.state["highlights"]],
         })
 
     @app.route("/api/compile-highlights", methods=["POST"])

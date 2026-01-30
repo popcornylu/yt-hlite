@@ -199,6 +199,10 @@ youtubeForm.addEventListener('submit', async (e) => {
             youtubeBtn.textContent = 'Redirecting...';
             // Clear old session data
             sessionStorage.clear();
+            // Store description highlights if found
+            if (data.description_highlights && data.description_highlights.length > 0) {
+                sessionStorage.setItem('descriptionHighlights', JSON.stringify(data.description_highlights));
+            }
             window.location.href = data.redirect;
         } else {
             throw new Error(data.error || 'Failed to load video');

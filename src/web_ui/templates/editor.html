@@ -45,6 +45,15 @@
     </div>
 </div>
 
+<!-- Description Import Banner (hidden by default) -->
+<div class="description-import-banner hidden" id="description-import-banner">
+    <span class="banner-text" id="banner-text"></span>
+    <div class="banner-actions">
+        <button class="btn btn-primary btn-sm" onclick="loadDescriptionHighlights()">Load</button>
+        <button class="btn btn-secondary btn-sm" onclick="dismissDescriptionBanner()">Dismiss</button>
+    </div>
+</div>
+
 <!-- Timeline Section - fixed at bottom -->
 <div class="timeline-section">
     <div class="timeline-header">
@@ -377,6 +386,11 @@ html, body {
     color: #004085;
 }
 
+.highlight-source.description {
+    background: #d4edda;
+    color: #155724;
+}
+
 .highlight-delete {
     background: none;
     border: none;
@@ -663,6 +677,36 @@ html, body {
     opacity: 1;
 }
 
+/* Description import banner */
+.description-import-banner {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    background: #d4edda;
+    border-bottom: 1px solid #c3e6cb;
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 95;
+    font-size: 0.85rem;
+}
+
+.description-import-banner.hidden {
+    display: none;
+}
+
+.banner-text {
+    color: #155724;
+    font-weight: 500;
+}
+
+.banner-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
 /* No-select during splitter drag */
 .no-select {
     user-select: none;
@@ -830,6 +874,7 @@ function onYTPlayerStateChange(event) {
 
 document.addEventListener('DOMContentLoaded', async () => {
     await loadHighlights();
+    checkDescriptionHighlights();
     setupKeyboardShortcuts();
     setupPlayheadDrag();
     setupSplitter();
@@ -1611,6 +1656,60 @@ function formatTimeShort(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Description import banner
+function checkDescriptionHighlights() {
+    const saved = sessionStorage.getItem('descriptionHighlights');
+    if (!saved) return;
+
+    const parsed = JSON.parse(saved);
+    if (!parsed || parsed.length === 0) return;
+
+    // Only show if no existing highlights
+    if (highlights.length > 0) {
+        sessionStorage.removeItem('descriptionHighlights');
+        return;
+    }
+
+    const banner = document.getElementById('description-import-banner');
+    const text = document.getElementById('banner-text');
+    text.textContent = `${parsed.length} highlight${parsed.length !== 1 ? 's' : ''} found in video description`;
+    banner.classList.remove('hidden');
+}
+
+async function loadDescriptionHighlights() {
+    const saved = sessionStorage.getItem('descriptionHighlights');
+    if (!saved) return;
+
+    const parsed = JSON.parse(saved);
+
+    try {
+        const response = await fetch('/api/import-from-description', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ highlights: parsed })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            highlights = data.highlights;
+            renderHighlights();
+            renderTimeline();
+            updateStats();
+            showToast(`Loaded ${data.imported_count} highlights from description`);
+        }
+    } catch (e) {
+        console.error('Failed to import description highlights:', e);
+    }
+
+    sessionStorage.removeItem('descriptionHighlights');
+    document.getElementById('description-import-banner').classList.add('hidden');
+}
+
+function dismissDescriptionBanner() {
+    sessionStorage.removeItem('descriptionHighlights');
+    document.getElementById('description-import-banner').classList.add('hidden');
 }
 </script>
 {% endblock %}

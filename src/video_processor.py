@@ -365,6 +365,7 @@ class YouTubeMetadata:
     fps: float
     thumbnail: str
     url: str
+    description: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -374,6 +375,7 @@ class YouTubeMetadata:
             "fps": self.fps,
             "thumbnail": self.thumbnail,
             "url": self.url,
+            "description": self.description,
         }
 
 
@@ -448,6 +450,7 @@ class YouTubeProcessor:
             fps=float(info.get("fps", 30) or 30),
             thumbnail=info.get("thumbnail", ""),
             url=self.url,
+            description=info.get("description", ""),
         )
 
         return self.metadata

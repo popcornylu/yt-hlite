@@ -49,13 +49,21 @@
     <div class="card-header">
         <h2>Export Options</h2>
     </div>
-    <div class="export-grid">
+    <div class="export-grid three-col">
         <div class="export-option">
             <div class="export-icon">📋</div>
             <h3>Export Timecodes</h3>
             <p>Copy timestamp list to clipboard (instant)</p>
             <button class="btn btn-secondary btn-large" onclick="exportTimecodes()">
                 Copy Timecodes
+            </button>
+        </div>
+        <div class="export-option">
+            <div class="export-icon">📝</div>
+            <h3>Copy for Description</h3>
+            <p>YouTube-ready timestamps for video description</p>
+            <button class="btn btn-secondary btn-large" onclick="exportForDescription()">
+                Copy for Description
             </button>
         </div>
         <div class="export-option primary">
@@ -181,6 +189,10 @@
     grid-template-columns: 1fr 1fr;
     gap: 2rem;
     padding: 1.5rem;
+}
+
+.export-grid.three-col {
+    grid-template-columns: 1fr 1fr 1fr;
 }
 
 .export-option {
@@ -352,8 +364,9 @@
 }
 
 /* Responsive */
-@media (max-width: 768px) {
-    .export-grid {
+@media (max-width: 900px) {
+    .export-grid,
+    .export-grid.three-col {
         grid-template-columns: 1fr;
     }
 }
@@ -414,6 +427,30 @@ function copyTimecodes() {
     navigator.clipboard.writeText(text).then(() => {
         alert('Copied to clipboard!');
     });
+}
+
+async function exportForDescription() {
+    if (selectedHighlightIds.length === 0) {
+        alert('No highlights created.');
+        return;
+    }
+
+    const url = `/api/export-highlight-description?highlight_ids=${selectedHighlightIds.join('&highlight_ids=')}`;
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.text) {
+            document.getElementById('timecodes-section').classList.remove('hidden');
+            document.getElementById('timecodes-output').textContent = data.text;
+
+            await navigator.clipboard.writeText(data.text);
+            alert(`${data.count} highlights copied for YouTube description!`);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
 }
 
 async function startCompile() {
