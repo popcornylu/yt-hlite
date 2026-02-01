@@ -1,38 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}YouTube Highlights - Video{% endblock %}
+{% block title %}YouTube Highlights{% endblock %}
 
 {% block content %}
 <div class="hero">
     <h1>YouTube Highlight Editor</h1>
-    <p class="subtitle">Paste a YouTube URL and manually mark the best moments</p>
+    <p class="subtitle">Paste a YouTube URL to watch and mark the best moments</p>
 </div>
 
-{% if error %}
-<div class="alert alert-error">
-    {{ error }}
-</div>
-{% endif %}
-
-{% if has_youtube %}
-<div class="card">
-    <h2>Current Video</h2>
-    <div class="video-info">
-        <img src="https://img.youtube.com/vi/{{ youtube_id }}/mqdefault.jpg"
-             alt="Video thumbnail" class="video-thumbnail">
-        <div class="video-details">
-            <span class="video-icon">YouTube</span>
-            <span class="video-name">{{ youtube_title or youtube_id }}</span>
-        </div>
-    </div>
-    <div class="button-group">
-        <a href="{{ url_for('editor') }}" class="btn btn-primary">Start Editing</a>
-        <button onclick="showInputForm()" class="btn btn-secondary">Use Different Video</button>
-    </div>
-</div>
-{% endif %}
-
-<div class="card {% if has_youtube %}hidden{% endif %}" id="input-card">
+<div class="card" id="input-card">
     <h2>Enter YouTube Video</h2>
 
     <form id="youtube-form">
@@ -40,122 +16,20 @@
             <label for="youtube-url">YouTube URL:</label>
             <input type="text" id="youtube-url" name="url"
                    placeholder="https://www.youtube.com/watch?v=..."
-                   class="input-text input-large">
+                   class="input-text input-large"
+                   autofocus>
         </div>
         <button type="submit" class="btn btn-primary btn-block" id="youtube-btn">
-            Load Video
+            Go
         </button>
     </form>
     <p class="hint">Paste a YouTube URL (supports youtube.com/watch?v=, youtu.be/, etc.)</p>
-
-    <!-- Preview area -->
-    <div id="preview-area" class="hidden">
-        <div class="preview-card">
-            <img id="preview-thumbnail" src="" alt="Video thumbnail" class="preview-thumbnail">
-            <div class="preview-details">
-                <h3 id="preview-title">Video Title</h3>
-                <p id="preview-duration">Duration: --:--</p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="workflow-steps">
-    <h2>How It Works</h2>
-    <div class="steps-grid">
-        <div class="step">
-            <div class="step-number">1</div>
-            <h3>Paste URL</h3>
-            <p>Enter any YouTube video URL</p>
-        </div>
-        <div class="step">
-            <div class="step-number">2</div>
-            <h3>Watch & Mark</h3>
-            <p>Press <kbd>[</kbd> to start, <kbd>]</kbd> to end a highlight</p>
-        </div>
-        <div class="step">
-            <div class="step-number">3</div>
-            <h3>Preview</h3>
-            <p>Review your highlights in sequence</p>
-        </div>
-        <div class="step">
-            <div class="step-number">4</div>
-            <h3>Export</h3>
-            <p>Get timecodes or compile a video</p>
-        </div>
-    </div>
 </div>
 
 <style>
-.video-thumbnail {
-    width: 160px;
-    height: 90px;
-    object-fit: cover;
-    border-radius: 4px;
-}
-
-.video-info {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.video-details {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.video-icon {
-    background: #ff0000;
-    color: white;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    width: fit-content;
-}
-
-.video-name {
-    font-weight: 500;
-}
-
 .input-large {
     font-size: 1.1rem;
     padding: 0.75rem 1rem;
-}
-
-.preview-card {
-    display: flex;
-    gap: 1rem;
-    background: #f8f9fa;
-    padding: 1rem;
-    border-radius: 8px;
-    margin-top: 1rem;
-}
-
-.preview-thumbnail {
-    width: 200px;
-    height: 112px;
-    object-fit: cover;
-    border-radius: 4px;
-}
-
-.preview-details {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-
-.preview-details h3 {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.1rem;
-}
-
-.preview-details p {
-    margin: 0;
-    color: #6c757d;
 }
 </style>
 {% endblock %}
@@ -165,67 +39,36 @@
 const youtubeForm = document.getElementById('youtube-form');
 const youtubeUrl = document.getElementById('youtube-url');
 const youtubeBtn = document.getElementById('youtube-btn');
-const previewArea = document.getElementById('preview-area');
 
-youtubeForm.addEventListener('submit', async (e) => {
+youtubeForm.addEventListener('submit', (e) => {
     e.preventDefault();
 
     const url = youtubeUrl.value.trim();
-    if (!url) {
-        alert('Please enter a YouTube URL');
+    if (!url) return;
+
+    // Extract video ID client-side
+    const videoId = extractVideoId(url);
+    if (!videoId) {
+        youtubeUrl.setCustomValidity('Invalid YouTube URL');
+        youtubeUrl.reportValidity();
         return;
     }
 
-    youtubeBtn.disabled = true;
-    youtubeBtn.textContent = 'Loading...';
-
-    try {
-        const response = await fetch('/set-youtube', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: url })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            // Show preview
-            document.getElementById('preview-thumbnail').src = data.thumbnail;
-            document.getElementById('preview-title').textContent = data.title;
-            document.getElementById('preview-duration').textContent =
-                `Duration: ${formatDuration(data.duration)}`;
-            previewArea.classList.remove('hidden');
-
-            youtubeBtn.textContent = 'Redirecting...';
-            // Clear old session data
-            sessionStorage.clear();
-            // Store description highlights if found
-            if (data.description_highlights && data.description_highlights.length > 0) {
-                sessionStorage.setItem('descriptionHighlights', JSON.stringify(data.description_highlights));
-            }
-            window.location.href = data.redirect;
-        } else {
-            throw new Error(data.error || 'Failed to load video');
-        }
-    } catch (error) {
-        alert('Error: ' + error.message);
-        youtubeBtn.disabled = false;
-        youtubeBtn.textContent = 'Load Video';
-    }
+    // Navigate directly to /watch?v=<id>
+    window.location.href = `/watch?v=${videoId}`;
 });
 
-function formatDuration(seconds) {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    if (hrs > 0) {
-        return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+function extractVideoId(url) {
+    // Match various YouTube URL formats
+    const patterns = [
+        /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
+        /^([a-zA-Z0-9_-]{11})$/,  // bare video ID
+    ];
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match) return match[1];
     }
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
-function showInputForm() {
-    document.getElementById('input-card').classList.remove('hidden');
+    return null;
 }
 </script>
 {% endblock %}

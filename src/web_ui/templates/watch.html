@@ -1,0 +1,1800 @@
+{% extends "base.html" %}
+
+{% block title %}{{ video_title or 'Watch' }} - YouTube Highlights{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="watch-error">
+    <h2>Error</h2>
+    <p>{{ error }}</p>
+    <a href="{{ url_for('index') }}" class="btn btn-primary">Back to Home</a>
+</div>
+{% else %}
+
+<!-- Main Layout -->
+<div class="editor-layout" id="editor-layout">
+    <!-- Video Player Section -->
+    <div class="video-section" id="video-pane">
+        <div id="youtube-player-container">
+            <div id="youtube-player"></div>
+        </div>
+        <div class="video-controls">
+            <div class="time-display">
+                <span id="current-time">00:00.00</span>
+                <span class="time-separator">/</span>
+                <span id="total-time">00:00.00</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Draggable Splitter -->
+    <div class="splitter" id="splitter"></div>
+
+    <!-- Highlights List Section - right sidebar -->
+    <div class="highlights-section" id="highlights-pane">
+        <div class="highlights-header">
+            <h3>Highlights <span id="highlight-count">(0)</span></h3>
+            <div class="highlights-total">
+                Total: <span id="total-duration">0:00</span>
+            </div>
+        </div>
+        <div id="highlights-list" class="highlights-list">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+</div>
+
+<!-- Empty State Overlay (shown when watch mode + 0 highlights) -->
+<div class="empty-overlay hidden" id="empty-overlay">
+    <div class="empty-overlay-content">
+        <h2>No highlights found for this video</h2>
+        <p>The video description doesn't contain any highlights.</p>
+        <button class="btn btn-primary btn-large" onclick="setMode('edit')">Enter Edit Mode</button>
+    </div>
+</div>
+
+<!-- Timeline Section - fixed at bottom -->
+<div class="timeline-section">
+    <div class="timeline-header">
+        <div class="timeline-header-left">
+            <span class="timeline-stats" id="timeline-stats">0 highlights (0:00)</span>
+            <!-- Watch mode buttons -->
+            <button id="play-all-btn" class="btn btn-primary btn-sm watch-only" onclick="startPlayAll()">
+                Play All
+            </button>
+            <button id="stop-play-btn" class="btn btn-secondary btn-sm watch-only hidden" onclick="stopPlayAll()">
+                Stop
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="copyForDescription()">
+                Copy for Description
+            </button>
+            <!-- Edit mode buttons -->
+            <button id="auto-detect-btn" class="btn btn-secondary btn-sm edit-only" onclick="autoDetectHighlights()">
+                Auto-detect
+            </button>
+        </div>
+        <div class="timeline-info">
+            <span id="timeline-zoom-label">Full length</span>
+            <span id="timeline-duration">Duration: 0:00</span>
+            <!-- Mode toggle buttons -->
+            <button class="btn btn-secondary btn-sm watch-only" onclick="setMode('edit')">
+                Edit
+            </button>
+            <button class="btn btn-primary btn-sm edit-only" onclick="setMode('watch')">
+                Back to Watch
+            </button>
+        </div>
+    </div>
+    <div class="timeline-scroll-container" id="timeline-scroll">
+        <div class="timeline-content" id="timeline-content">
+            <div class="timeline-wrapper">
+                <div id="timeline" class="timeline-bar">
+                    <!-- Highlight segments populated by JS -->
+                </div>
+                <div id="playhead" class="playhead">
+                    <div class="playhead-handle"></div>
+                </div>
+            </div>
+            <div id="time-labels" class="time-labels"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Keyboard Shortcuts Toggle -->
+<button class="shortcuts-toggle" id="shortcuts-toggle" onclick="toggleShortcuts()" title="Keyboard Shortcuts">?</button>
+<div class="shortcuts-help hidden" id="shortcuts-help">
+    <h4>Keyboard Shortcuts</h4>
+    <div class="shortcuts-grid">
+        <div><kbd>[</kbd></div><div>Set highlight start <span class="edit-only-label">(edit)</span></div>
+        <div><kbd>]</kbd></div><div>Set highlight end <span class="edit-only-label">(edit)</span></div>
+        <div><kbd>\</kbd></div><div>Cancel highlight start <span class="edit-only-label">(edit)</span></div>
+        <div><kbd>←</kbd> <kbd>→</kbd></div><div>Jump ±5 seconds</div>
+        <div><kbd>z</kbd> <kbd>x</kbd></div><div>Jump ±2 seconds</div>
+        <div><kbd>↑</kbd> <kbd>↓</kbd></div><div>Prev / Next highlight</div>
+        <div><kbd>⌘</kbd><kbd>↑</kbd> <kbd>⌘</kbd><kbd>↓</kbd></div><div>First / Last highlight</div>
+        <div><kbd>Space</kbd></div><div>Play / Pause</div>
+        <div><kbd>d</kbd></div><div>Speed +0.1x</div>
+        <div><kbd>s</kbd></div><div>Speed −0.1x</div>
+        <div><kbd>r</kbd></div><div>Toggle 1x / 2x</div>
+        <div><kbd>t</kbd></div><div>Cycle timeline: hide / full / zoom</div>
+        <div><kbd>h</kbd></div><div>Toggle highlights panel</div>
+        <div><kbd>Delete</kbd></div><div>Delete selected <span class="edit-only-label">(edit)</span></div>
+        <div><kbd>e</kbd></div><div>Enter Edit mode</div>
+        <div><kbd>Escape</kbd></div><div>Back to Watch / Deselect</div>
+    </div>
+</div>
+
+<!-- Highlights Tab (visible when panel hidden) -->
+<button class="highlights-tab hidden" id="highlights-tab" onclick="toggleHighlightsPanel()">
+    Highlights (<span id="tab-highlight-count">0</span>)
+</button>
+
+<!-- Toast notification -->
+<div id="toast" class="toast"></div>
+
+{% endif %}
+
+<style>
+/* Fixed viewport layout - no scrolling */
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+
+.container {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    height: calc(100vh - 56px - 118px); /* viewport - navbar - timeline */
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Mode-based visibility */
+[data-mode="watch"] .edit-only { display: none !important; }
+[data-mode="edit"] .watch-only { display: none !important; }
+.edit-only-label { font-size: 0.55rem; color: #6c757d; }
+
+/* Watch error */
+.watch-error {
+    text-align: center;
+    padding: 4rem 2rem;
+}
+.watch-error h2 { margin-bottom: 1rem; color: #dc3545; }
+.watch-error p { margin-bottom: 2rem; color: #6c757d; }
+
+/* Recording region on timeline */
+.recording-region {
+    position: absolute;
+    height: 100%;
+    background: rgba(220, 53, 69, 0.25);
+    border-left: 2px solid #dc3545;
+    border-right: 2px solid #dc3545;
+    z-index: 5;
+    pointer-events: none;
+    animation: recording-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+    0%, 100% { background: rgba(220, 53, 69, 0.25); }
+    50% { background: rgba(220, 53, 69, 0.12); }
+}
+
+.recording-marker {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    width: 2px;
+    background: #dc3545;
+    z-index: 6;
+}
+
+.recording-marker::before {
+    content: '[';
+    position: absolute;
+    top: -16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #dc3545;
+}
+
+/* Editor Layout - flex with splitter */
+.editor-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Video Section - fills left pane */
+.video-section {
+    flex: 1;
+    min-width: 200px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #000;
+    position: relative;
+}
+
+#youtube-player-container {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    background: #000;
+    overflow: hidden;
+}
+
+#youtube-player {
+    width: 100%;
+    height: 100%;
+}
+
+.video-controls {
+    display: flex;
+    justify-content: center;
+    padding: 0.4rem 0;
+    flex-shrink: 0;
+    background: #111;
+}
+
+.time-display {
+    font-family: monospace;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #4da3ff;
+    background: #222;
+    padding: 0.3rem 0.75rem;
+    border-radius: 4px;
+}
+
+.time-separator {
+    color: #888;
+    margin: 0 0.25rem;
+}
+
+/* Speed indicator */
+.speed-indicator {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    font-family: monospace;
+    font-size: 1.25rem;
+    font-weight: 700;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    z-index: 20;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+.speed-indicator.visible {
+    opacity: 1;
+}
+
+/* Splitter */
+.splitter {
+    width: 5px;
+    background: #dee2e6;
+    cursor: col-resize;
+    flex-shrink: 0;
+    transition: background 0.15s;
+    position: relative;
+}
+
+.splitter:hover,
+.splitter.dragging {
+    background: #007bff;
+}
+
+.splitter::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 30px;
+    border-left: 1px solid #aaa;
+    border-right: 1px solid #aaa;
+}
+
+.splitter:hover::after,
+.splitter.dragging::after {
+    border-color: #fff;
+}
+
+/* Highlights List - right sidebar */
+.highlights-section {
+    width: 280px;
+    min-width: 180px;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+}
+
+.highlights-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    flex-shrink: 0;
+}
+
+.highlights-header h3 {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+#highlight-count {
+    color: #6c757d;
+    font-weight: normal;
+}
+
+.highlights-total {
+    color: #6c757d;
+    font-size: 0.8rem;
+}
+
+.highlights-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.highlight-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+
+.highlight-item:hover {
+    background: #e9ecef;
+}
+
+.highlight-item.selected {
+    border-color: #ffc107;
+    background: #fff3cd;
+}
+
+.highlight-item.playing {
+    border-color: #28a745;
+    background: #d4edda;
+}
+
+.highlight-number {
+    width: 24px;
+    height: 24px;
+    background: #28a745;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+
+.highlight-times {
+    flex: 1;
+    font-family: monospace;
+    font-size: 0.8rem;
+}
+
+.highlight-duration {
+    color: #6c757d;
+    font-size: 0.75rem;
+}
+
+.highlight-source {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    background: #e9ecef;
+    color: #6c757d;
+}
+
+.highlight-source.auto {
+    background: #cce5ff;
+    color: #004085;
+}
+
+.highlight-source.description {
+    background: #d4edda;
+    color: #155724;
+}
+
+.highlight-delete {
+    background: none;
+    border: none;
+    color: #dc3545;
+    cursor: pointer;
+    padding: 0.2rem;
+    font-size: 1.1rem;
+    line-height: 1;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.highlight-delete:hover {
+    opacity: 1;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 1.5rem;
+    color: #6c757d;
+}
+
+.empty-state p {
+    margin: 0.4rem 0;
+    font-size: 0.85rem;
+}
+
+.empty-state .hint {
+    font-size: 0.8rem;
+}
+
+/* Empty overlay */
+.empty-overlay {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    bottom: 118px;
+    background: rgba(255,255,255,0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 80;
+}
+
+.empty-overlay.hidden { display: none; }
+
+.empty-overlay-content {
+    text-align: center;
+}
+
+.empty-overlay-content h2 {
+    margin-bottom: 0.5rem;
+    color: #495057;
+}
+
+.empty-overlay-content p {
+    margin-bottom: 1.5rem;
+    color: #6c757d;
+}
+
+/* Timeline Section - fixed at bottom */
+.timeline-section {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    border-top: 1px solid #dee2e6;
+    padding: 0.4rem 1rem;
+    z-index: 90;
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+}
+
+.timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.35rem;
+}
+
+.timeline-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.timeline-stats {
+    font-size: 0.8rem;
+    color: #495057;
+    font-weight: 500;
+}
+
+.timeline-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-size: 0.75rem;
+    color: #6c757d;
+}
+
+.btn-sm {
+    padding: 0.2rem 0.6rem;
+    font-size: 0.75rem;
+}
+
+.timeline-scroll-container {
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.timeline-content {
+    position: relative;
+}
+
+.timeline-wrapper {
+    position: relative;
+    padding-top: 14px;
+}
+
+.timeline-bar {
+    height: 36px;
+    background: #e9ecef;
+    border-radius: 4px;
+    position: relative;
+    cursor: pointer;
+}
+
+.timeline-segment {
+    position: absolute;
+    height: 100%;
+    background: #28a745;
+    opacity: 0.7;
+    border-radius: 2px;
+    cursor: pointer;
+    border: 1px solid rgba(0,0,0,0.2);
+    min-width: 3px;
+    transition: opacity 0.2s;
+}
+
+.timeline-segment:hover {
+    opacity: 1;
+}
+
+.timeline-segment.selected {
+    opacity: 1;
+    box-shadow: 0 0 0 2px #ffc107;
+    z-index: 10;
+}
+
+.timeline-segment.playing-segment {
+    opacity: 1;
+    box-shadow: 0 0 0 2px #28a745;
+    z-index: 10;
+}
+
+/* Playhead */
+.playhead {
+    position: absolute;
+    top: 14px;
+    height: 36px;
+    width: 2px;
+    background: #ff0000;
+    z-index: 100;
+    cursor: ew-resize;
+    left: 0;
+}
+
+.playhead-handle {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, -100%);
+    width: 12px;
+    height: 12px;
+    background: #ff0000;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+}
+
+.time-labels {
+    display: flex;
+    font-size: 0.65rem;
+    color: #6c757d;
+    margin-top: 0.2rem;
+    position: relative;
+    height: 14px;
+}
+
+.time-label {
+    position: absolute;
+    transform: translateX(-50%);
+}
+
+/* Shortcuts Toggle Button */
+.shortcuts-toggle {
+    position: fixed;
+    top: 65px;
+    right: 12px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid #dee2e6;
+    background: white;
+    color: #6c757d;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    z-index: 51;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    transition: all 0.15s;
+}
+
+.shortcuts-toggle:hover {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+/* Shortcuts Help */
+.shortcuts-help {
+    position: fixed;
+    top: 100px;
+    right: 12px;
+    background: white;
+    padding: 0.6rem;
+    border-radius: 6px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+    font-size: 0.65rem;
+    max-width: 220px;
+    z-index: 50;
+}
+
+.shortcuts-help.hidden { display: none; }
+
+.shortcuts-help h4 {
+    margin: 0 0 0.4rem 0;
+    font-size: 0.75rem;
+}
+
+.shortcuts-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.2rem 0.5rem;
+}
+
+.shortcuts-grid kbd {
+    background: #e9ecef;
+    padding: 0.1rem 0.25rem;
+    border-radius: 2px;
+    font-size: 0.6rem;
+}
+
+/* Highlights panel collapsed state */
+.highlights-section.collapsed,
+.splitter.collapsed {
+    display: none;
+}
+
+/* Highlights tab - visible when panel is hidden */
+.highlights-tab {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-right: none;
+    padding: 0.75rem 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #495057;
+    cursor: pointer;
+    z-index: 50;
+    border-radius: 6px 0 0 6px;
+    box-shadow: -2px 0 6px rgba(0,0,0,0.1);
+    transition: background 0.15s;
+}
+
+.highlights-tab:hover { background: #e9ecef; }
+.highlights-tab.hidden { display: none; }
+
+/* Toast notification */
+.toast {
+    position: fixed;
+    top: 64px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.8);
+    color: #fff;
+    padding: 0.4rem 1rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    z-index: 200;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+.toast.visible { opacity: 1; }
+
+/* No-select during splitter drag */
+.no-select {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Responsive */
+@media (max-width: 700px) {
+    .shortcuts-toggle,
+    .shortcuts-help {
+        display: none;
+    }
+
+    .splitter,
+    .highlights-section {
+        display: none;
+    }
+
+    .video-section {
+        flex: 1;
+    }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+{% if not error %}
+<script>
+// ============= Configuration =============
+const youtubeVideoId = '{{ youtube_id }}';
+const initialHighlightsFromDescription = {{ highlights_json|safe }};
+let videoDuration = {{ video_duration or 0 }};
+
+// ============= State =============
+let highlights = []; // client-side highlight objects
+let selectedHighlightId = null;
+let recordingStart = null;
+let mode = initialHighlightsFromDescription.length > 0 ? 'watch' : 'edit';
+let backendInitialized = false;
+
+// Sequential playback state
+let isPlayingAll = false;
+let playAllClipIndex = 0;
+let playAllClips = [];
+
+// Timeline zoom modes
+const ZOOM_MODES = [
+    { label: 'Hidden', hidden: true, getPixelsPerSecond: () => null },
+    { label: 'Full length', hidden: false, getPixelsPerSecond: () => null },
+    { label: '1 inch = 5s', hidden: false, getPixelsPerSecond: () => 96 / 5 },
+];
+let currentZoomMode = 1;
+let pixelsPerSecond = ZOOM_MODES[1].getPixelsPerSecond();
+
+// YouTube player
+let ytPlayer = null;
+let ytPlayerReady = false;
+let ytTimeUpdateInterval = null;
+
+// Jump amounts
+const JUMP_LARGE = 5;
+const JUMP_SMALL = 2;
+
+// ============= VideoPlayer Interface =============
+const VideoPlayer = {
+    getCurrentTime() {
+        if (ytPlayer && ytPlayerReady) return ytPlayer.getCurrentTime() || 0;
+        return 0;
+    },
+    setCurrentTime(time) {
+        time = Math.max(0, Math.min(time, this.getDuration()));
+        if (ytPlayer && ytPlayerReady) ytPlayer.seekTo(time, true);
+    },
+    play() {
+        if (ytPlayer && ytPlayerReady) ytPlayer.playVideo();
+    },
+    pause() {
+        if (ytPlayer && ytPlayerReady) ytPlayer.pauseVideo();
+    },
+    isPaused() {
+        if (ytPlayer && ytPlayerReady) return ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING;
+        return true;
+    },
+    getDuration() {
+        if (ytPlayer && ytPlayerReady) return ytPlayer.getDuration() || videoDuration;
+        return videoDuration;
+    },
+    getPlaybackRate() {
+        if (ytPlayer && ytPlayerReady) return ytPlayer.getPlaybackRate();
+        return 1;
+    },
+    setPlaybackRate(rate) {
+        rate = Math.round(Math.max(0.1, Math.min(rate, 4.0)) * 10) / 10;
+        if (ytPlayer && ytPlayerReady) ytPlayer.setPlaybackRate(rate);
+    }
+};
+
+// ============= YouTube IFrame API =============
+const tag = document.createElement('script');
+tag.src = "https://www.youtube.com/iframe_api";
+document.head.appendChild(tag);
+
+function onYouTubeIframeAPIReady() {
+    ytPlayer = new YT.Player('youtube-player', {
+        videoId: youtubeVideoId,
+        playerVars: {
+            'autoplay': 0,
+            'controls': 1,
+            'modestbranding': 1,
+            'rel': 0,
+            'enablejsapi': 1,
+            'origin': window.location.origin
+        },
+        events: {
+            'onReady': onYTPlayerReady,
+            'onStateChange': onYTPlayerStateChange
+        }
+    });
+}
+
+function onYTPlayerReady(event) {
+    ytPlayerReady = true;
+    videoDuration = ytPlayer.getDuration();
+    renderTimeline();
+    updateTotalTime();
+
+    ytTimeUpdateInterval = setInterval(() => {
+        if (ytPlayerReady) {
+            updateTimeDisplay();
+            updatePlayheadPosition();
+            if (isPlayingAll) onPlayAllTimeUpdate();
+        }
+    }, 100);
+
+    // Auto-start sequential playback in watch mode
+    if (mode === 'watch' && highlights.length > 0) {
+        startPlayAll();
+    }
+}
+
+function onYTPlayerStateChange(event) {
+    // Could handle ended state for playAll
+}
+
+// ============= Initialization =============
+document.addEventListener('DOMContentLoaded', () => {
+    // Load initial highlights from description
+    loadInitialHighlights();
+    setMode(mode);
+    setupKeyboardShortcuts();
+    setupPlayheadDrag();
+    setupSplitter();
+
+    // Recapture focus from YouTube iframe
+    document.addEventListener('click', () => {
+        if (document.activeElement && document.activeElement.tagName === 'IFRAME') {
+            document.activeElement.blur();
+            document.body.focus();
+        }
+    });
+});
+
+function loadInitialHighlights() {
+    // Convert description highlights to client-side format
+    highlights = initialHighlightsFromDescription.map((h, i) => ({
+        id: `desc_${i + 1}`,
+        start_time: h.start_time,
+        end_time: h.end_time,
+        duration: h.end_time - h.start_time,
+        source: 'description',
+        label: null,
+    }));
+    renderHighlights();
+    renderTimeline();
+    updateStats();
+}
+
+// ============= Mode Management =============
+function setMode(newMode) {
+    mode = newMode;
+    document.body.dataset.mode = mode;
+
+    // Show/hide empty overlay
+    const overlay = document.getElementById('empty-overlay');
+    if (mode === 'watch' && highlights.length === 0) {
+        overlay.classList.remove('hidden');
+    } else {
+        overlay.classList.add('hidden');
+    }
+
+    // Stop sequential playback when leaving watch mode
+    if (mode === 'edit' && isPlayingAll) {
+        stopPlayAll();
+    }
+
+    // Cancel recording when leaving edit mode
+    if (mode === 'watch' && recordingStart !== null) {
+        cancelRecording();
+    }
+
+    // Initialize backend on first edit mode entry
+    if (mode === 'edit' && !backendInitialized) {
+        initBackend();
+    }
+
+    renderHighlights();
+    renderTimeline();
+}
+
+async function initBackend() {
+    try {
+        const response = await fetch('/api/watch/init', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                video_id: youtubeVideoId,
+                highlights: highlights.map(h => ({
+                    start_time: h.start_time,
+                    end_time: h.end_time,
+                }))
+            })
+        });
+        const data = await response.json();
+        if (data.success) {
+            backendInitialized = true;
+            // Update highlights with backend IDs
+            if (data.highlights) {
+                highlights = data.highlights;
+            }
+            renderHighlights();
+            renderTimeline();
+            updateStats();
+        }
+    } catch (e) {
+        console.error('Failed to init backend:', e);
+        showToast('Failed to initialize editor');
+    }
+}
+
+// ============= Sequential Playback (Watch Mode) =============
+function startPlayAll() {
+    if (highlights.length === 0) return;
+
+    playAllClips = [...highlights].sort((a, b) => a.start_time - b.start_time);
+    playAllClipIndex = 0;
+    isPlayingAll = true;
+
+    document.getElementById('play-all-btn').classList.add('hidden');
+    document.getElementById('stop-play-btn').classList.remove('hidden');
+
+    playCurrentClip();
+}
+
+function stopPlayAll() {
+    isPlayingAll = false;
+    VideoPlayer.pause();
+
+    document.getElementById('play-all-btn').classList.remove('hidden');
+    document.getElementById('stop-play-btn').classList.add('hidden');
+
+    // Clear playing state
+    document.querySelectorAll('.highlight-item').forEach(el => el.classList.remove('playing'));
+    document.querySelectorAll('.timeline-segment').forEach(el => el.classList.remove('playing-segment'));
+}
+
+function playCurrentClip() {
+    if (!isPlayingAll || playAllClipIndex >= playAllClips.length) {
+        stopPlayAll();
+        return;
+    }
+
+    const clip = playAllClips[playAllClipIndex];
+
+    // Update active highlight in sidebar
+    document.querySelectorAll('.highlight-item').forEach(el => {
+        el.classList.remove('playing');
+        if (el.dataset.id === clip.id) {
+            el.classList.add('playing');
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    });
+
+    // Update active segment on timeline
+    document.querySelectorAll('.timeline-segment').forEach(el => {
+        el.classList.remove('playing-segment');
+        if (el.dataset.id === clip.id) el.classList.add('playing-segment');
+    });
+
+    VideoPlayer.setCurrentTime(clip.start_time);
+    VideoPlayer.play();
+}
+
+function onPlayAllTimeUpdate() {
+    if (!isPlayingAll || playAllClipIndex >= playAllClips.length) return;
+
+    const clip = playAllClips[playAllClipIndex];
+    const currentTime = VideoPlayer.getCurrentTime();
+
+    if (currentTime >= clip.end_time - 0.1) {
+        // Move to next clip
+        playAllClipIndex++;
+        if (playAllClipIndex < playAllClips.length) {
+            setTimeout(() => {
+                if (isPlayingAll) playCurrentClip();
+            }, 300);
+        } else {
+            stopPlayAll();
+        }
+    }
+}
+
+// ============= Copy for Description =============
+async function copyForDescription() {
+    if (highlights.length === 0) {
+        showToast('No highlights to export');
+        return;
+    }
+
+    const sorted = [...highlights].sort((a, b) => a.start_time - b.start_time);
+    const watchUrl = `${window.location.origin}/watch?v=${youtubeVideoId}`;
+
+    let lines = [watchUrl, '', '[Highlights]'];
+    for (const h of sorted) {
+        const start = formatTimestampForDescription(h.start_time);
+        const end = formatTimestampForDescription(h.end_time);
+        lines.push(`${start} - ${end}`);
+    }
+
+    const text = lines.join('\n');
+    try {
+        await navigator.clipboard.writeText(text);
+        showToast(`Copied ${sorted.length} highlights for description`);
+    } catch (e) {
+        showToast('Failed to copy to clipboard');
+    }
+}
+
+function formatTimestampForDescription(seconds) {
+    const totalSecs = Math.round(seconds);
+    const hours = Math.floor(totalSecs / 3600);
+    const minutes = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    if (hours > 0) {
+        return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+}
+
+// ============= Splitter =============
+function setupSplitter() {
+    const splitter = document.getElementById('splitter');
+    const layout = document.getElementById('editor-layout');
+    const videoPane = document.getElementById('video-pane');
+    const highlightsPane = document.getElementById('highlights-pane');
+    let isDragging = false;
+
+    splitter.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        isDragging = true;
+        splitter.classList.add('dragging');
+        document.body.classList.add('no-select');
+
+        const onMove = (e) => {
+            if (!isDragging) return;
+            const layoutRect = layout.getBoundingClientRect();
+            const x = e.clientX - layoutRect.left;
+            const totalWidth = layoutRect.width;
+            const splitterWidth = 5;
+            const minVideo = 300;
+            const minHighlights = 180;
+            const maxVideoWidth = totalWidth - splitterWidth - minHighlights;
+            const videoWidth = Math.max(minVideo, Math.min(x, maxVideoWidth));
+            const highlightsWidth = totalWidth - videoWidth - splitterWidth;
+
+            videoPane.style.flex = 'none';
+            videoPane.style.width = videoWidth + 'px';
+            highlightsPane.style.width = highlightsWidth + 'px';
+        };
+
+        const onUp = () => {
+            isDragging = false;
+            splitter.classList.remove('dragging');
+            document.body.classList.remove('no-select');
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    });
+}
+
+// ============= Timeline Zoom =============
+function cycleTimelineZoom() {
+    currentZoomMode = (currentZoomMode + 1) % ZOOM_MODES.length;
+    const zoomMode = ZOOM_MODES[currentZoomMode];
+    const section = document.querySelector('.timeline-section');
+
+    if (zoomMode.hidden) {
+        section.style.display = 'none';
+        document.querySelector('.container').style.height = 'calc(100vh - 56px)';
+    } else {
+        section.style.display = '';
+        document.querySelector('.container').style.height = '';
+        applyZoomMode();
+        renderTimeline();
+        updatePlayheadPosition();
+    }
+}
+
+function applyZoomMode() {
+    const zoomMode = ZOOM_MODES[currentZoomMode];
+    if (zoomMode.hidden) return;
+    const pps = zoomMode.getPixelsPerSecond();
+    if (pps === null) {
+        const scrollContainer = document.getElementById('timeline-scroll');
+        const duration = VideoPlayer.getDuration() || videoDuration || 100;
+        pixelsPerSecond = scrollContainer.clientWidth / duration;
+    } else {
+        pixelsPerSecond = pps;
+    }
+    document.getElementById('timeline-zoom-label').textContent = zoomMode.label;
+}
+
+// ============= Toast =============
+let toastTimeout = null;
+let toastInterval = null;
+function showToast(message) {
+    const el = document.getElementById('toast');
+    el.textContent = message;
+    el.classList.add('visible');
+    clearTimeout(toastTimeout);
+    clearInterval(toastInterval);
+    toastInterval = null;
+    toastTimeout = setTimeout(() => el.classList.remove('visible'), 1500);
+}
+
+function startRecordingToast() {
+    clearTimeout(toastTimeout);
+    clearInterval(toastInterval);
+    const el = document.getElementById('toast');
+    el.classList.add('visible');
+    const update = () => {
+        if (recordingStart === null) return;
+        const elapsed = Math.max(0, VideoPlayer.getCurrentTime() - recordingStart);
+        el.textContent = `Highlight: ${elapsed.toFixed(1)}s`;
+    };
+    update();
+    toastInterval = setInterval(update, 100);
+}
+
+// ============= Speed Indicator =============
+let speedIndicatorTimeout = null;
+function showSpeedIndicator(rate) {
+    let el = document.getElementById('speed-indicator');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'speed-indicator';
+        el.className = 'speed-indicator';
+        document.getElementById('video-pane').appendChild(el);
+    }
+    el.textContent = rate.toFixed(1) + 'x';
+    el.classList.add('visible');
+    clearTimeout(speedIndicatorTimeout);
+    speedIndicatorTimeout = setTimeout(() => el.classList.remove('visible'), 800);
+}
+
+// ============= Shortcuts / Highlights Panel Toggle =============
+function toggleShortcuts() {
+    document.getElementById('shortcuts-help').classList.toggle('hidden');
+}
+
+let highlightsPanelVisible = true;
+function toggleHighlightsPanel() {
+    highlightsPanelVisible = !highlightsPanelVisible;
+    const panel = document.getElementById('highlights-pane');
+    const splitter = document.getElementById('splitter');
+    const tab = document.getElementById('highlights-tab');
+    const videoPane = document.getElementById('video-pane');
+
+    if (highlightsPanelVisible) {
+        panel.classList.remove('collapsed');
+        splitter.classList.remove('collapsed');
+        tab.classList.add('hidden');
+        videoPane.style.flex = '';
+        videoPane.style.width = '';
+        panel.style.width = '';
+    } else {
+        panel.classList.add('collapsed');
+        splitter.classList.add('collapsed');
+        tab.classList.remove('hidden');
+        videoPane.style.flex = '1';
+        videoPane.style.width = '';
+    }
+}
+
+// ============= Keyboard Shortcuts =============
+function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', async (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+        const isMeta = e.metaKey || e.ctrlKey;
+        const currentTime = VideoPlayer.getCurrentTime();
+
+        switch (e.key) {
+            case 'ArrowUp':
+                e.preventDefault();
+                if (isMeta) {
+                    if (highlights.length > 0) selectHighlight(highlights[0].id);
+                } else {
+                    jumpToPrevHighlight();
+                }
+                break;
+
+            case 'ArrowDown':
+                e.preventDefault();
+                if (isMeta) {
+                    if (highlights.length > 0) selectHighlight(highlights[highlights.length - 1].id);
+                } else {
+                    jumpToNextHighlight();
+                }
+                break;
+
+            case 'ArrowLeft':
+                e.preventDefault();
+                VideoPlayer.setCurrentTime(currentTime - JUMP_LARGE);
+                break;
+
+            case 'ArrowRight':
+                e.preventDefault();
+                VideoPlayer.setCurrentTime(currentTime + JUMP_LARGE);
+                break;
+
+            case 'z':
+                e.preventDefault();
+                VideoPlayer.setCurrentTime(currentTime - JUMP_SMALL);
+                break;
+
+            case 'x':
+                e.preventDefault();
+                VideoPlayer.setCurrentTime(currentTime + JUMP_SMALL);
+                break;
+
+            case '[':
+                e.preventDefault();
+                if (mode === 'edit') {
+                    if (isMeta) jumpToPrevHighlight();
+                    else setHighlightStart(currentTime);
+                }
+                break;
+
+            case ']':
+                e.preventDefault();
+                if (mode === 'edit') {
+                    if (isMeta) jumpToNextHighlight();
+                    else setHighlightEnd(currentTime);
+                }
+                break;
+
+            case ' ':
+                e.preventDefault();
+                if (VideoPlayer.isPaused()) VideoPlayer.play();
+                else VideoPlayer.pause();
+                break;
+
+            case 'Backspace':
+            case 'Delete':
+                if (mode === 'edit') {
+                    e.preventDefault();
+                    deleteSelectedHighlight();
+                }
+                break;
+
+            case 'd': {
+                e.preventDefault();
+                const newRate = Math.round(Math.max(0.1, Math.min(VideoPlayer.getPlaybackRate() + 0.1, 4.0)) * 10) / 10;
+                VideoPlayer.setPlaybackRate(newRate);
+                showSpeedIndicator(newRate);
+                break;
+            }
+
+            case 's': {
+                e.preventDefault();
+                const newRate = Math.round(Math.max(0.1, Math.min(VideoPlayer.getPlaybackRate() - 0.1, 4.0)) * 10) / 10;
+                VideoPlayer.setPlaybackRate(newRate);
+                showSpeedIndicator(newRate);
+                break;
+            }
+
+            case 'r': {
+                if (isMeta) break;
+                e.preventDefault();
+                const newRate = VideoPlayer.getPlaybackRate() === 2.0 ? 1.0 : 2.0;
+                VideoPlayer.setPlaybackRate(newRate);
+                showSpeedIndicator(newRate);
+                break;
+            }
+
+            case 'h':
+                e.preventDefault();
+                toggleHighlightsPanel();
+                break;
+
+            case 't':
+                if (isMeta) break;
+                e.preventDefault();
+                cycleTimelineZoom();
+                break;
+
+            case '\\':
+                e.preventDefault();
+                if (mode === 'edit' && recordingStart !== null) {
+                    cancelRecording();
+                }
+                break;
+
+            case 'e':
+                if (isMeta) break;
+                if (mode === 'watch') {
+                    e.preventDefault();
+                    setMode('edit');
+                }
+                break;
+
+            case 'Escape':
+                e.preventDefault();
+                if (mode === 'edit') {
+                    if (selectedHighlightId !== null) {
+                        deselectHighlight();
+                    } else {
+                        setMode('watch');
+                    }
+                } else {
+                    deselectHighlight();
+                }
+                break;
+        }
+    }, true);
+}
+
+// ============= Highlight CRUD =============
+function setHighlightStart(time) {
+    if (selectedHighlightId !== null && recordingStart === null) {
+        const highlight = highlights.find(h => h.id === selectedHighlightId);
+        if (highlight && time < highlight.end_time) {
+            if (wouldOverlap(time, highlight.end_time, selectedHighlightId)) return;
+            updateHighlight(selectedHighlightId, { start_time: time });
+            return;
+        }
+    }
+
+    if (highlights.some(h => time >= h.start_time && time < h.end_time)) return;
+
+    recordingStart = time;
+    startRecordingToast();
+    updateRecordingRegion();
+}
+
+function setHighlightEnd(time) {
+    if (recordingStart !== null && time > recordingStart) {
+        if (wouldOverlap(recordingStart, time)) return;
+        createHighlight(recordingStart, time);
+        recordingStart = null;
+        updateRecordingRegion();
+    } else if (selectedHighlightId !== null) {
+        const highlight = highlights.find(h => h.id === selectedHighlightId);
+        if (highlight && time > highlight.start_time) {
+            if (wouldOverlap(highlight.start_time, time, selectedHighlightId)) return;
+            updateHighlight(selectedHighlightId, { end_time: time });
+        }
+    }
+}
+
+function wouldOverlap(start, end, excludeId) {
+    return highlights.some(h => {
+        if (h.id === excludeId) return false;
+        return start < h.end_time && end > h.start_time;
+    });
+}
+
+function updateRecordingRegion() {
+    const existing = document.getElementById('recording-region');
+    if (existing) existing.remove();
+    const existingMarker = document.getElementById('recording-marker');
+    if (existingMarker) existingMarker.remove();
+
+    if (recordingStart === null) return;
+
+    const timeline = document.getElementById('timeline');
+    const currentTime = VideoPlayer.getCurrentTime();
+
+    const marker = document.createElement('div');
+    marker.id = 'recording-marker';
+    marker.className = 'recording-marker';
+    marker.style.left = `${recordingStart * pixelsPerSecond}px`;
+    timeline.appendChild(marker);
+
+    if (currentTime > recordingStart) {
+        const region = document.createElement('div');
+        region.id = 'recording-region';
+        region.className = 'recording-region';
+        region.style.left = `${recordingStart * pixelsPerSecond}px`;
+        region.style.width = `${(currentTime - recordingStart) * pixelsPerSecond}px`;
+        timeline.appendChild(region);
+    }
+}
+
+function cancelRecording() {
+    recordingStart = null;
+    showToast('Cancelled');
+    updateRecordingRegion();
+}
+
+async function createHighlight(start, end) {
+    if (!backendInitialized) await initBackend();
+
+    try {
+        const response = await fetch('/api/highlight', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({start_time: start, end_time: end})
+        });
+        const highlight = await response.json();
+        highlights.push(highlight);
+        highlights.sort((a, b) => a.start_time - b.start_time);
+
+        selectedHighlightId = highlight.id;
+        showToast('Highlight added');
+        renderHighlights();
+        renderTimeline();
+        updateStats();
+    } catch (e) {
+        console.error('Failed to create highlight:', e);
+    }
+}
+
+async function updateHighlight(id, updates) {
+    if (!backendInitialized) return;
+
+    try {
+        const response = await fetch(`/api/highlight/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(updates)
+        });
+        const updated = await response.json();
+
+        const index = highlights.findIndex(h => h.id === id);
+        if (index >= 0) {
+            highlights[index] = updated;
+            highlights.sort((a, b) => a.start_time - b.start_time);
+        }
+
+        renderHighlights();
+        renderTimeline();
+        updateStats();
+    } catch (e) {
+        console.error('Failed to update highlight:', e);
+    }
+}
+
+async function deleteHighlight(id) {
+    if (!backendInitialized) return;
+
+    try {
+        await fetch(`/api/highlight/${id}`, { method: 'DELETE' });
+        highlights = highlights.filter(h => h.id !== id);
+
+        if (selectedHighlightId === id) selectedHighlightId = null;
+
+        renderHighlights();
+        renderTimeline();
+        updateStats();
+    } catch (e) {
+        console.error('Failed to delete highlight:', e);
+    }
+}
+
+function deleteSelectedHighlight() {
+    if (selectedHighlightId !== null) deleteHighlight(selectedHighlightId);
+}
+
+function selectHighlight(id) {
+    selectedHighlightId = id;
+    const highlight = highlights.find(h => h.id === id);
+    if (highlight) {
+        VideoPlayer.setCurrentTime(highlight.start_time);
+        if (mode === 'watch') VideoPlayer.play();
+    }
+    renderHighlights();
+    renderTimeline();
+
+    requestAnimationFrame(() => {
+        const el = document.querySelector(`.highlight-item[data-id="${id}"]`);
+        if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+}
+
+function deselectHighlight() {
+    selectedHighlightId = null;
+    renderHighlights();
+    renderTimeline();
+}
+
+function jumpToPrevHighlight() {
+    if (highlights.length === 0) return;
+    const currentTime = VideoPlayer.getCurrentTime();
+    let prev = null;
+    for (let i = highlights.length - 1; i >= 0; i--) {
+        if (highlights[i].start_time < currentTime - 0.5) {
+            prev = highlights[i];
+            break;
+        }
+    }
+    if (prev) selectHighlight(prev.id);
+    else selectHighlight(highlights[highlights.length - 1].id);
+}
+
+function jumpToNextHighlight() {
+    if (highlights.length === 0) return;
+    const currentTime = VideoPlayer.getCurrentTime();
+    let next = null;
+    for (const h of highlights) {
+        if (h.start_time > currentTime + 0.5) {
+            next = h;
+            break;
+        }
+    }
+    if (next) selectHighlight(next.id);
+    else selectHighlight(highlights[0].id);
+}
+
+async function autoDetectHighlights() {
+    if (!backendInitialized) await initBackend();
+
+    const btn = document.getElementById('auto-detect-btn');
+    btn.disabled = true;
+    btn.textContent = 'Detecting...';
+
+    try {
+        const response = await fetch('/api/auto-detect', { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            highlights = data.highlights;
+            renderHighlights();
+            renderTimeline();
+            updateStats();
+            btn.textContent = `Found ${data.detected_count}`;
+            setTimeout(() => {
+                btn.textContent = 'Auto-detect';
+                btn.disabled = false;
+            }, 2000);
+        } else {
+            throw new Error(data.error);
+        }
+    } catch (e) {
+        showToast('Auto-detection failed: ' + e.message);
+        btn.textContent = 'Auto-detect';
+        btn.disabled = false;
+    }
+}
+
+// ============= Rendering =============
+function renderHighlights() {
+    const list = document.getElementById('highlights-list');
+
+    if (highlights.length === 0) {
+        if (mode === 'edit') {
+            list.innerHTML = `
+                <div class="empty-state">
+                    <p>No highlights yet</p>
+                    <p class="hint">Press <kbd>[</kbd> to mark start, <kbd>]</kbd> to mark end</p>
+                </div>
+            `;
+        } else {
+            list.innerHTML = `
+                <div class="empty-state">
+                    <p>No highlights</p>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    list.innerHTML = highlights.map((h, i) => {
+        const isSelected = h.id === selectedHighlightId;
+        const deleteBtn = mode === 'edit'
+            ? `<button class="highlight-delete" onclick="event.stopPropagation(); deleteHighlight('${h.id}')" title="Delete">&times;</button>`
+            : '';
+        const sourceTag = h.source
+            ? `<span class="highlight-source ${h.source}">${h.source}</span>`
+            : '';
+
+        return `
+            <div class="highlight-item ${isSelected ? 'selected' : ''}"
+                 data-id="${h.id}"
+                 onclick="selectHighlight('${h.id}')">
+                <span class="highlight-number">${i + 1}</span>
+                <span class="highlight-times">${formatTimeShort(h.start_time)} - ${formatTimeShort(h.end_time)}</span>
+                <span class="highlight-duration">${(h.duration || (h.end_time - h.start_time)).toFixed(1)}s</span>
+                ${sourceTag}
+                ${deleteBtn}
+            </div>
+        `;
+    }).join('');
+
+    document.getElementById('highlight-count').textContent = `(${highlights.length})`;
+}
+
+function renderTimeline() {
+    const timeline = document.getElementById('timeline');
+    const labels = document.getElementById('time-labels');
+    const content = document.getElementById('timeline-content');
+
+    timeline.innerHTML = '';
+    labels.innerHTML = '';
+
+    const duration = VideoPlayer.getDuration() || videoDuration || 100;
+    applyZoomMode();
+
+    const totalWidth = duration * pixelsPerSecond;
+    content.style.width = `${totalWidth}px`;
+
+    document.getElementById('timeline-duration').textContent = `Duration: ${formatTimeShort(duration)}`;
+
+    highlights.forEach((h, i) => {
+        const segment = document.createElement('div');
+        segment.className = 'timeline-segment';
+        segment.dataset.id = h.id;
+
+        if (h.id === selectedHighlightId) segment.classList.add('selected');
+
+        const left = h.start_time * pixelsPerSecond;
+        const width = (h.end_time - h.start_time) * pixelsPerSecond;
+
+        segment.style.left = `${left}px`;
+        segment.style.width = `${Math.max(width, 3)}px`;
+        segment.title = `#${i + 1}: ${formatTimeShort(h.start_time)} - ${formatTimeShort(h.end_time)}`;
+
+        segment.onclick = (e) => {
+            e.stopPropagation();
+            selectHighlight(h.id);
+        };
+
+        timeline.appendChild(segment);
+    });
+
+    timeline.onclick = (e) => {
+        if (e.target === timeline) {
+            const rect = timeline.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const time = x / pixelsPerSecond;
+            VideoPlayer.setCurrentTime(time);
+        }
+    };
+
+    // Time labels
+    const minLabelGap = 80;
+    const rawInterval = minLabelGap / pixelsPerSecond;
+    const niceIntervals = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+    const labelInterval = niceIntervals.find(i => i >= rawInterval) || 600;
+    const numLabels = Math.ceil(duration / labelInterval);
+    for (let i = 0; i <= numLabels; i++) {
+        const time = i * labelInterval;
+        if (time > duration) break;
+
+        const label = document.createElement('span');
+        label.className = 'time-label';
+        label.style.left = `${time * pixelsPerSecond}px`;
+        label.textContent = formatTimeShort(time);
+        labels.appendChild(label);
+    }
+}
+
+function updatePlayheadPosition() {
+    const playhead = document.getElementById('playhead');
+    const currentTime = VideoPlayer.getCurrentTime();
+
+    if (playhead) {
+        const left = currentTime * pixelsPerSecond;
+        playhead.style.left = `${left}px`;
+
+        const scrollContainer = document.getElementById('timeline-scroll');
+        const containerWidth = scrollContainer.clientWidth;
+        const scrollLeft = scrollContainer.scrollLeft;
+
+        if (left < scrollLeft || left > scrollLeft + containerWidth - 50) {
+            scrollContainer.scrollLeft = Math.max(0, left - containerWidth / 2);
+        }
+    }
+
+    if (recordingStart !== null) updateRecordingRegion();
+}
+
+let isPlayheadDragging = false;
+
+function setupPlayheadDrag() {
+    const playhead = document.getElementById('playhead');
+
+    playhead.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        isPlayheadDragging = true;
+        playhead.classList.add('dragging');
+        VideoPlayer.pause();
+
+        document.addEventListener('mousemove', onPlayheadDrag);
+        document.addEventListener('mouseup', endPlayheadDrag);
+    });
+}
+
+function onPlayheadDrag(e) {
+    if (!isPlayheadDragging) return;
+
+    const timeline = document.getElementById('timeline');
+    const rect = timeline.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    const duration = VideoPlayer.getDuration() || videoDuration;
+    const maxX = duration * pixelsPerSecond;
+    x = Math.max(0, Math.min(x, maxX));
+    const newTime = x / pixelsPerSecond;
+
+    VideoPlayer.setCurrentTime(newTime);
+    updateTimeDisplay();
+    updatePlayheadPosition();
+}
+
+function endPlayheadDrag() {
+    isPlayheadDragging = false;
+    document.getElementById('playhead').classList.remove('dragging');
+    document.removeEventListener('mousemove', onPlayheadDrag);
+    document.removeEventListener('mouseup', endPlayheadDrag);
+}
+
+function updateTimeDisplay() {
+    document.getElementById('current-time').textContent = formatTimePrecise(VideoPlayer.getCurrentTime());
+}
+
+function updateTotalTime() {
+    document.getElementById('total-time').textContent = formatTimePrecise(VideoPlayer.getDuration());
+}
+
+function updateStats() {
+    const count = highlights.length;
+    const totalDuration = highlights.reduce((sum, h) => sum + (h.duration || (h.end_time - h.start_time)), 0);
+
+    document.getElementById('total-duration').textContent = formatTimeShort(totalDuration);
+    document.getElementById('timeline-stats').textContent = `${count} highlights (${formatTimeShort(totalDuration)})`;
+    document.getElementById('tab-highlight-count').textContent = count;
+}
+
+// ============= Time Formatting =============
+function formatTimePrecise(seconds) {
+    if (seconds === undefined || seconds === null || isNaN(seconds)) return '00:00.00';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toFixed(2).padStart(5, '0')}`;
+}
+
+function formatTimeShort(seconds) {
+    if (seconds === undefined || seconds === null || isNaN(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+</script>
+{% endif %}
+{% endblock %}

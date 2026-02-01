@@ -5,7 +5,7 @@ import json
 import subprocess
 import platform
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, send_file, url_for
+from flask import Flask, render_template, request, jsonify, send_file, url_for, redirect
 
 from ..video_processor import VideoProcessor, YouTubeProcessor, extract_youtube_video_id, format_timestamp
 from ..audio_analyzer import AudioAnalyzer
@@ -241,8 +241,90 @@ def create_app(
             "title": metadata.title,
             "duration": metadata.duration,
             "thumbnail": metadata.thumbnail,
-            "redirect": url_for("editor"),
+            "redirect": url_for("watch", v=video_id),
             "description_highlights": description_highlights,
+        })
+
+    @app.route("/watch")
+    def watch():
+        """Watch page - combined watch/edit interface for a YouTube video."""
+        video_id = request.args.get("v")
+        if not video_id:
+            return redirect(url_for("index"))
+
+        error = None
+        video_duration = 0
+        video_title = ""
+        highlights_json = "[]"
+
+        try:
+            processor = YouTubeProcessor(video_id, str(app.config["OUTPUT_DIR"]))
+            metadata = processor.get_metadata()
+            video_duration = metadata.duration
+            video_title = metadata.title
+
+            # Parse highlights from video description
+            description_highlights = parse_highlights_from_description(metadata.description)
+            highlights_json = json.dumps(description_highlights)
+        except Exception as e:
+            error = f"Could not load video: {str(e)}"
+
+        return render_template(
+            "watch.html",
+            youtube_id=video_id,
+            video_duration=video_duration,
+            video_title=video_title,
+            highlights_json=highlights_json,
+            error=error,
+        )
+
+    @app.route("/api/watch/init", methods=["POST"])
+    def watch_init():
+        """Initialize backend state for edit mode on the watch page."""
+        data = request.get_json()
+        video_id = data.get("video_id")
+        highlights_data = data.get("highlights", [])
+
+        if not video_id:
+            return jsonify({"error": "video_id required"}), 400
+
+        # Initialize YouTube processor in app.state
+        app.state["youtube_processor"] = YouTubeProcessor(
+            video_id, str(app.config["OUTPUT_DIR"])
+        )
+        app.config["YOUTUBE_VIDEO_ID"] = video_id
+        app.config["SOURCE_TYPE"] = "youtube"
+        app.config["VIDEO_PATH"] = None
+
+        # Clear old state
+        app.state["rallies"] = []
+        app.state["scored_rallies"] = []
+        app.state["audio_analyzer"] = None
+        app.state["audio_analysis"] = None
+        app.state["rally_detector"] = None
+        app.state["volume_data"] = None
+        app.state["video_processor"] = None
+
+        # Import existing highlights into app.state
+        app.state["highlights"] = []
+        app.state["highlight_counter"] = 0
+        for h in highlights_data:
+            start = h.get("start_time")
+            end = h.get("end_time")
+            if start is None or end is None or start >= end:
+                continue
+            app.state["highlight_counter"] += 1
+            app.state["highlights"].append(create_highlight(
+                start_time=float(start),
+                end_time=float(end),
+                index=app.state["highlight_counter"],
+                source="description",
+            ))
+
+        return jsonify({
+            "success": True,
+            "highlight_count": len(app.state["highlights"]),
+            "highlights": [h.to_dict() for h in app.state["highlights"]],
         })
 
     @app.route("/api/youtube-info")
@@ -615,9 +697,9 @@ def create_app(
 
     @app.route("/timeline")
     def timeline():
-        """Redirect to editor page (timeline merged into editor)."""
-        from flask import redirect
-        return redirect(url_for("editor"))
+        """Redirect to watch page."""
+        video_id = app.config.get("YOUTUBE_VIDEO_ID") or ""
+        return redirect(url_for("watch", v=video_id))
 
     @app.route("/api/analyze", methods=["POST"])
     def analyze_video():
@@ -890,31 +972,15 @@ def create_app(
 
     @app.route("/editor")
     def editor():
-        """Editor page - main highlight editing interface."""
-        is_youtube = app.config["SOURCE_TYPE"] == "youtube"
-        youtube_id = app.config["YOUTUBE_VIDEO_ID"] if is_youtube else None
-
-        # Get video duration from metadata
-        video_duration = 0
-        if is_youtube and app.state.get("youtube_processor"):
-            try:
-                metadata = app.state["youtube_processor"].get_metadata()
-                video_duration = metadata.duration
-            except Exception:
-                pass
-
-        return render_template(
-            "editor.html",
-            source_type=app.config["SOURCE_TYPE"],
-            youtube_id=youtube_id,
-            video_duration=video_duration,
-        )
+        """Redirect editor to watch page."""
+        video_id = app.config.get("YOUTUBE_VIDEO_ID") or ""
+        return redirect(url_for("watch", v=video_id))
 
     @app.route("/candidates")
     def candidates():
-        """Redirect old candidates URL to editor."""
-        from flask import redirect
-        return redirect(url_for("editor"))
+        """Redirect old candidates URL to watch page."""
+        video_id = app.config.get("YOUTUBE_VIDEO_ID") or ""
+        return redirect(url_for("watch", v=video_id))
 
     @app.route("/api/rescore", methods=["POST"])
     def rescore_rallies():
@@ -943,38 +1009,21 @@ def create_app(
 
     @app.route("/preview")
     def preview():
-        """Preview page - review selected highlights."""
-        is_youtube = app.config["SOURCE_TYPE"] == "youtube"
-        youtube_id = app.config["YOUTUBE_VIDEO_ID"] if is_youtube else None
-        return render_template(
-            "preview.html",
-            source_type=app.config["SOURCE_TYPE"],
-            youtube_id=youtube_id,
-        )
+        """Redirect preview to watch page."""
+        video_id = app.config.get("YOUTUBE_VIDEO_ID") or ""
+        return redirect(url_for("watch", v=video_id))
 
     @app.route("/review")
     def review():
-        """Redirect old review URL to preview."""
-        from flask import redirect
-        return redirect(url_for("preview"))
+        """Redirect old review URL to watch page."""
+        video_id = app.config.get("YOUTUBE_VIDEO_ID") or ""
+        return redirect(url_for("watch", v=video_id))
 
     @app.route("/export")
     def export_page():
-        """Export page - download and compile highlights."""
-        is_youtube = app.config["SOURCE_TYPE"] == "youtube"
-        youtube_id = app.config["YOUTUBE_VIDEO_ID"] if is_youtube else None
-
-        # Get cache status
-        cache_info = None
-        if app.state.get("youtube_processor"):
-            cache_info = app.state["youtube_processor"].get_cache_info()
-
-        return render_template(
-            "export.html",
-            source_type=app.config["SOURCE_TYPE"],
-            youtube_id=youtube_id,
-            cache_info=cache_info,
-        )
+        """Redirect export to watch page."""
+        video_id = app.config.get("YOUTUBE_VIDEO_ID") or ""
+        return redirect(url_for("watch", v=video_id))
 
     @app.route("/api/select-highlights", methods=["POST"])
     def select_highlights():

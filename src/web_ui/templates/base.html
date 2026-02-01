@@ -14,10 +14,10 @@
             <span>YouTube Highlights</span>
         </div>
         <div class="nav-links">
-            <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Video</a>
-            <a href="{{ url_for('editor') }}" class="{% if request.endpoint == 'editor' %}active{% endif %}">Editor</a>
-            <a href="{{ url_for('preview') }}" class="{% if request.endpoint == 'preview' %}active{% endif %}">Preview</a>
-            <a href="{{ url_for('export_page') }}" class="{% if request.endpoint == 'export_page' %}active{% endif %}">Export</a>
+            <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Home</a>
+            {% if request.endpoint == 'watch' %}
+            <a href="#" class="active">Watch</a>
+            {% endif %}
         </div>
     </nav>
 
