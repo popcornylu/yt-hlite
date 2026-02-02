@@ -18,49 +18,49 @@ Open http://127.0.0.1:5252 in browser, then paste a YouTube URL or use a local v
 
 ## Architecture
 
+Two-page design: `/` (URL input) and `/watch?v=<id>` (watch + edit).
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         WORKFLOW                                │
 │                                                                 │
-│  YouTube URL → yt-dlp (audio only) → Audio Analysis → Rallies  │
-│       ↓                                                         │
-│  YouTube iframe ← Timeline ← Rally Detection                    │
-│       ↓                                                         │
-│  Preview (seek iframe to timestamps)                            │
-│       ↓                                                         │
-│  Export Options:                                                │
-│    1. Timecodes (instant) → clipboard                           │
-│    2. Compile Video → yt-dlp download → ffmpeg cut → MP4        │
+│  1. Creator edits highlights, copies to YouTube description     │
+│  2. Viewer opens /watch?v=<id> → highlights parsed from desc   │
+│  3. Watch mode: auto-plays highlights sequentially              │
+│  4. Edit mode: bracket recording, delete, auto-detect           │
+│  5. Export: "Copy for Description" → clipboard                  │
+│     or: Compile Video → yt-dlp download → ffmpeg cut → MP4     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Web UI (Flask)                           │
-│  ┌──────────┐  ┌────────────┐  ┌────────────┐  ┌─────────────┐ │
-│  │  Index   │→ │ Candidates │→ │   Review   │→ │  Export     │ │
-│  │(YouTube) │  │ (review)   │  │ (compile)  │  │ (output)    │ │
-│  └──────────┘  └────────────┘  └────────────┘  └─────────────┘ │
+│                    Web UI (Flask) - Two Pages                   │
+│                                                                 │
+│  ┌──────────────┐    ┌────────────────────────────────────────┐ │
+│  │  /           │ →  │  /watch?v=<id>                        │ │
+│  │  URL input   │    │  ┌─────────────┬────────────────────┐ │ │
+│  │  (index.html)│    │  │ Watch mode  │ Edit mode          │ │ │
+│  └──────────────┘    │  │ (read-only, │ (bracket record,   │ │ │
+│                      │  │  auto-play) │  delete, detect)   │ │ │
+│                      │  └─────────────┴────────────────────┘ │ │
+│                      │  (watch.html)                          │ │
+│                      └────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Core Modules                               │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │ AudioAnalyzer   │→ │ RallyDetector   │→ │HighlightScorer  │ │
-│  │ (ball hits,     │  │ (group hits     │  │ (rank rallies)  │ │
-│  │  crowd noise)   │  │  into rallies)  │  │                 │ │
+│  │ AudioAnalyzer   │  │ RallyDetector   │  │DescriptionParser│ │
+│  │ (ball hits,     │  │ (group hits     │  │ (parse/format   │ │
+│  │  crowd noise)   │  │  into rallies)  │  │  highlights)    │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
-│           ↓                                         ↓          │
-│  ┌─────────────────┐                      ┌─────────────────┐  │
-│  │YouTubeProcessor │                      │PreferenceLearner│  │
-│  │ (yt-dlp audio   │                      │ (learn from     │  │
-│  │  & video DL)    │                      │  user feedback) │  │
-│  └─────────────────┘                      └─────────────────┘  │
-│                              ↓                                  │
-│                    ┌─────────────────┐                         │
-│                    │ VideoCompiler   │                         │
-│                    │ (ffmpeg concat) │                         │
-│                    └─────────────────┘                         │
+│           ↓                                                     │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
+│  │YouTubeProcessor │  │ VideoCompiler   │  │HighlightDetector│ │
+│  │ (yt-dlp audio   │  │ (ffmpeg concat) │  │ (Highlight      │ │
+│  │  & video DL)    │  │                 │  │  dataclass)     │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -73,6 +73,8 @@ tt-highlight/
 │   ├── audio_analyzer.py     # Ball hit detection via spectrogram
 │   ├── rally_detector.py     # Group hits into Rally objects
 │   ├── highlight_scorer.py   # Score & rank rallies (ScoredRally)
+│   ├── highlight_detector.py # Highlight dataclass & create_highlight()
+│   ├── description_parser.py # Parse/format highlights in YouTube descriptions
 │   ├── preference_learner.py # Learn weights from user feedback
 │   ├── video_processor.py    # Video/YouTube processing, metadata
 │   ├── video_compiler.py     # FFmpeg compilation with transitions
@@ -83,9 +85,13 @@ tt-highlight/
 │       │   └── style.css     # All CSS styles
 │       └── templates/
 │           ├── base.html     # Base template with nav
-│           ├── index.html    # Home - YouTube URL input
-│           ├── candidates.html # Main review interface
-│           └── review.html   # Final review & export
+│           ├── index.html    # Home - YouTube URL input (redirects to /watch)
+│           ├── watch.html    # Main page - watch/edit mode with YouTube player
+│           ├── editor.html   # (legacy, redirects to /watch)
+│           ├── preview.html  # (legacy, redirects to /watch)
+│           ├── export.html   # (legacy, redirects to /watch)
+│           ├── candidates.html # (legacy, redirects to /watch)
+│           └── review.html   # (legacy, redirects to /watch)
 ├── data/
 │   ├── output/               # Downloaded audio/video, compiled highlights
 │   └── feedback/             # User feedback JSON files
@@ -134,6 +140,19 @@ class Rally:
     duration -> float          # seconds
 ```
 
+### Highlight (highlight_detector.py)
+```python
+@dataclass
+class Highlight:
+    id: str                    # "highlight_0001"
+    start_time: float          # Seconds
+    end_time: float            # Seconds
+    source: str                # "manual" | "auto" | "description"
+    label: Optional[str]
+
+    def to_dict() -> dict
+```
+
 ### ScoredRally (highlight_scorer.py)
 ```python
 @dataclass
@@ -146,51 +165,82 @@ class ScoredRally:
     user_decision: Optional[str]  # "keep" | "reject" | None
 ```
 
+### Description Format (description_parser.py)
+```python
+parse_highlights_from_description(text) -> list[dict]   # Extract from YouTube description
+format_highlights_for_description(highlights) -> str     # Format for YouTube description
+```
+
 ## API Endpoints
 
+### Pages
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | GET | Home page (YouTube URL input) |
+| `/watch?v=<id>` | GET | Watch/edit page (stateless, parses highlights from description) |
+| `/editor`, `/preview`, `/export`, `/candidates`, `/review`, `/timeline` | GET | Legacy redirects → `/watch` |
+
+### Watch/Edit APIs
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/watch/init` | POST | Lazy backend init for edit mode `{video_id, highlights}` |
+| `/api/highlights` | GET | Get all highlights |
+| `/api/highlight` | POST | Create highlight `{start_time, end_time}` |
+| `/api/highlight/<id>` | PUT | Update highlight `{start_time, end_time}` |
+| `/api/highlight/<id>` | DELETE | Delete highlight |
+| `/api/auto-detect` | POST | Auto-detect highlights via audio analysis |
+| `/api/export-highlight-description` | GET | Export highlights for YouTube description |
+| `/api/compile-highlights` | POST | Compile highlights into video `{highlight_ids}` |
+
+### Legacy/Shared APIs
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/set-youtube` | POST | Set YouTube URL `{url: string}` |
 | `/api/youtube-info` | GET | Get YouTube video metadata |
-| `/candidates` | GET | Main review page |
-| `/review` | GET | Final review & export page |
 | `/api/analyze` | POST | Start video analysis (downloads audio) |
 | `/api/rallies` | GET | Get all scored rallies |
-| `/api/rally/<id>/adjust` | POST | Adjust boundaries `{start_frame, end_frame}` |
-| `/api/export-timecodes` | GET | Export timecodes as text |
-| `/api/compile` | POST | Compile highlights `{rally_ids: []}` (downloads video) |
+| `/api/compile` | POST | Compile rallies into video `{rally_ids: []}` |
 | `/highlights/<filename>` | GET | Download compiled video |
 
 ## Web UI Features
 
-### Index Page (index.html)
-- **YouTube URL Input**: Paste any YouTube URL format
-- **Video Preview**: Shows thumbnail and title after URL validation
+### Index Page (`/`, index.html)
+- **YouTube URL Input**: Paste any YouTube URL format, client-side video ID extraction
+- Navigates directly to `/watch?v=<id>` (no server round-trip)
 
-### Candidates Page (candidates.html)
+### Watch Page (`/watch?v=<id>`, watch.html)
+- **Stateless page load**: Highlights parsed from YouTube description server-side
 - **YouTube Player**: Embedded iframe with YouTube IFrame API
-- **Timeline**: Zoomable (Cmd+/Cmd-), shows all rallies color-coded
-- **Rally Info Panel**: Shows stats, rating, keep/reject buttons
-- **Keyboard Shortcuts**:
-  - `←/→` - Previous/Next rally
-  - `↑/↓` - Adjust playback speed
-  - `1-5` - Star rating
-  - `Space` - Play/Pause
-  - `Cmd+[/]` - Set start/end boundary at current position
-  - `Cmd+Plus/Minus` - Zoom timeline
+- **Two modes** toggled via `data-mode` attribute on `<body>`:
 
-### Review Page (review.html)
-- **YouTube Player**: Embedded iframe for preview
-- **Timeline**: Shows selected highlights in green
-- **Preview Simulation**: Plays through clips in sequence
-- **Export Options**:
-  - **Export Timecodes**: Instant - copies timestamps to clipboard
-  - **Compile Video**: Downloads video, compiles MP4 with transitions
+#### Watch Mode (default when highlights exist)
+- **Auto-play**: Highlights play sequentially on page load
+- **Read-only sidebar**: Shows highlight list, active clip highlighted
+- **Play All / Stop** controls
+
+#### Edit Mode (default when no highlights)
+- **Bracket recording**: `[` starts, `]` ends a highlight at current playback position
+- **Delete**: Remove individual highlights (× button)
+- **Auto-detect**: Run audio analysis to find highlights automatically
+- **Copy for Description**: Export watch URL + highlights to clipboard (also in watch mode)
+- **Lazy backend init**: `/api/watch/init` called only on first edit mode entry
+
+#### Keyboard Shortcuts
+- `e` - Enter edit mode
+- `Escape` - Return to watch mode / deselect
+- `[` / `]` - Start/end bracket (edit mode)
+- `\` - Cancel in-progress bracket
+- `←/→` - Navigate highlights
+- `↑/↓` - Adjust playback speed
+- `h` - Toggle highlights panel
+- `t` - Cycle timeline visibility
+- `Space` - Play/Pause
 
 ## State Management
 
-**In-memory state** (lost on server restart):
+The `/watch` page loads **statelessly** — highlights are parsed from the YouTube description on each request. Backend `app.state` is only initialized lazily when entering edit mode (via `/api/watch/init`).
+
+**In-memory state** (lost on server restart, initialized lazily):
 ```python
 app.state = {
     "youtube_processor": YouTubeProcessor,  # For YouTube mode
@@ -204,6 +254,8 @@ app.state = {
     "preference_learner": PreferenceLearner,
     "video_compiler": VideoCompiler,
     "volume_data": list[float],
+    "highlights": list[Highlight],         # Manual highlight editing
+    "highlight_counter": int,              # For generating unique IDs
 }
 
 app.config = {
@@ -237,8 +289,19 @@ def extract_youtube_video_id(url: str) -> str:
 - **ffmpeg** (external): Video processing
 - **yt-dlp**: YouTube downloading
 
-## Timecode Export Format
+## Export Formats
 
+### Copy for Description (clipboard)
+```
+https://example.com/watch?v=VIDEO_ID
+
+[Highlights]
+0:20 - 0:25
+0:36 - 0:38
+1:15 - 1:22
+```
+
+### Timecode Export (legacy)
 ```
 0:20.22-0:25.36
 0:36.11-0:38.02
@@ -269,7 +332,10 @@ context_after: float = 1.5       # Context padding
 
 ## Notes
 
+- **Two-page architecture**: `/` (URL input) → `/watch?v=<id>` (watch + edit)
+- **Stateless watch page**: Highlights parsed from YouTube description on each load, no backend state needed for read-only viewing
+- **Lazy backend init**: `app.state` only populated when user enters edit mode
 - **Audio download is fast** (~10-30 seconds for typical video)
 - **Video download only when compiling** (on-demand)
 - **YouTube iframe seek precision** ~0.5s (acceptable for highlights)
-- **Boundary adjustment** uses time inputs (frame-accurate not possible with YouTube)
+- **Legacy templates** (editor, preview, export, candidates, review) still exist but all routes redirect to `/watch`
