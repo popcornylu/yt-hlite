@@ -2,6 +2,12 @@
 
 A human-in-the-loop system for generating highlight reels from table tennis videos. The system automatically detects rallies and exciting moments, then allows you to review, rate, and adjust the selections before compiling the final highlight video.
 
+## Try It Online
+
+**https://popcornylu.github.io/yt-hlite/**
+
+No installation required. Just paste a YouTube URL and start editing highlights.
+
 ## Features
 
 - **Automatic Rally Detection**: Uses audio analysis to detect ball hits and identify rallies

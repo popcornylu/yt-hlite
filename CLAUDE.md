@@ -4,6 +4,10 @@
 
 Table Tennis Highlight Generator - A human-in-the-loop system for generating highlight reels from table tennis match videos. Supports both local video files and YouTube URLs.
 
+## Live Site
+
+**https://popcornylu.github.io/yt-hlite/** - No installation required.
+
 ## Quick Start
 
 ### Option 1: Local Development (Flask Server)
@@ -30,9 +34,13 @@ wrangler deploy
 wrangler secret put YOUTUBE_API_KEY
 
 # 2. Update config and deploy static site
-# Edit static-site/js/config.js with your Worker URL
-# Push static-site/ to GitHub and enable GitHub Pages
+# Edit docs/js/config.js with your Worker URL
+# Push to GitHub and enable GitHub Pages from /docs folder
 ```
+
+**Production URLs:**
+- **Site:** https://popcornylu.github.io/yt-hlite/
+- **Worker:** https://yt-metadata.popcorny.workers.dev
 
 **Architecture:**
 ```
@@ -119,7 +127,7 @@ tt-highlight/
 ├── data/
 │   ├── output/               # Downloaded audio/video, compiled highlights
 │   └── feedback/             # User feedback JSON files
-├── static-site/              # Cloud deployment - static site
+├── docs/                     # Cloud deployment - static site (GitHub Pages)
 │   ├── index.html            # Home page (URL input)
 │   ├── watch.html            # Watch/edit page
 │   ├── css/style.css         # All styles
