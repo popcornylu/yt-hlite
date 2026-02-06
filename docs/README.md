@@ -5,7 +5,7 @@ A static web app for watching and editing highlights in YouTube videos. Highligh
 ## Files
 
 ```
-static-site/
+docs/
 ├── index.html      # Home page (YouTube URL input)
 ├── watch.html      # Watch/edit page
 ├── css/
@@ -28,7 +28,7 @@ const CONFIG = {
 ## Local Development
 
 ```bash
-cd static-site
+cd docs
 python -m http.server 5252
 ```
 
@@ -39,7 +39,7 @@ Open http://localhost:5252 in your browser.
 ### Option 1: GitHub Pages
 
 1. Create a new GitHub repository
-2. Push this `static-site/` directory to the repo
+2. Push this `docs/` directory to the repo
 3. Go to Settings > Pages
 4. Set Source to "Deploy from a branch"
 5. Select `main` branch and `/ (root)` folder
@@ -48,7 +48,7 @@ Open http://localhost:5252 in your browser.
 ### Option 2: Cloudflare Pages
 
 1. Connect your GitHub repo to Cloudflare Pages
-2. Set build output directory to `/` (or wherever static-site contents are)
+2. Set build output directory to `/` (or wherever docs contents are)
 3. Deploy
 
 ### Option 3: Any Static Host

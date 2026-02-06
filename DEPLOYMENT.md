@@ -100,7 +100,7 @@ Should return JSON with title, description, and parsed highlights.
 
 ## Step 3: Configure Static Site
 
-Update `static-site/js/config.js` with your Worker URL:
+Update `docs/js/config.js` with your Worker URL:
 
 ```javascript
 const CONFIG = {
@@ -115,10 +115,10 @@ const CONFIG = {
 ### 4.1 Create GitHub Repository
 
 1. Create a new repository on GitHub (e.g., `yt-highlights`)
-2. Push the `static-site/` contents to the repo:
+2. Push the `docs/` contents to the repo:
 
 ```bash
-cd static-site
+cd docs
 git init
 git add .
 git commit -m "Initial commit"
@@ -141,7 +141,7 @@ Your site will be live at: `https://<username>.github.io/yt-highlights/`
 To test locally before deploying:
 
 ```bash
-cd static-site
+cd docs
 python -m http.server 5252
 ```
 
@@ -193,7 +193,7 @@ If you want `api.yourdomain.com` instead of `*.workers.dev`:
 - [ ] Add YouTube API key as secret (`wrangler secret put YOUTUBE_API_KEY`)
 - [ ] (Optional) Set up KV namespace for caching
 - [ ] Test Worker endpoint
-- [ ] Update `static-site/js/config.js` with Worker URL
+- [ ] Update `docs/js/config.js` with Worker URL
 - [ ] Push static site to GitHub
 - [ ] Enable GitHub Pages
 - [ ] (Optional) Set up custom domain
