@@ -1,24 +1,8 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.venv/
-venv/
-ENV/
-
-# Data files (videos, outputs, feedback)
-data/
-*.mp4
-*.mov
-*.avi
-*.mkv
+# Node
+node_modules/
 
 # macOS
 .DS_Store
-.AppleDouble
-.LSOverride
 
 # IDE
 .idea/
