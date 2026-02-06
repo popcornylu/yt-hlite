@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en" class="watch-page">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch - YouTube Highlights</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-mode="watch">
+    <nav class="navbar">
+        <a href="index.html" class="nav-brand">
+            <span class="logo">🎬</span>
+            <span>YouTube Highlights</span>
+        </a>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="#" class="active">Watch</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <!-- Loading State -->
+        <div id="loading-state" class="card" style="text-align: center; padding: 3rem;">
+            <div class="spinner" style="margin: 0 auto 1rem;"></div>
+            <p>Loading video info...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="watch-error hidden">
+            <h2>Error</h2>
+            <p id="error-message"></p>
+            <a href="index.html" class="btn btn-primary">Back to Home</a>
+        </div>
+
+        <!-- Main Layout (hidden until loaded) -->
+        <div class="editor-layout hidden" id="editor-layout">
+            <!-- Video Player Section -->
+            <div class="video-section" id="video-pane">
+                <div id="youtube-player-container">
+                    <div id="youtube-player"></div>
+                </div>
+                <div class="video-controls">
+                    <div class="time-display">
+                        <span id="current-time">00:00.00</span>
+                        <span class="time-separator">/</span>
+                        <span id="total-time">00:00.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Draggable Splitter -->
+            <div class="splitter" id="splitter"></div>
+
+            <!-- Highlights List Section - right sidebar -->
+            <div class="highlights-section" id="highlights-pane">
+                <div class="highlights-header">
+                    <h3>Highlights <span id="highlight-count">(0)</span></h3>
+                    <div class="highlights-total">
+                        Total: <span id="total-duration">0:00</span>
+                    </div>
+                </div>
+                <div id="highlights-list" class="highlights-list">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Empty State Overlay (shown when watch mode + 0 highlights) -->
+        <div class="empty-overlay hidden" id="empty-overlay">
+            <div class="empty-overlay-content">
+                <h2>No highlights found for this video</h2>
+                <p>The video description doesn't contain any highlights.</p>
+                <button class="btn btn-primary btn-large" onclick="setMode('edit')">Enter Edit Mode</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Timeline Section - fixed at bottom -->
+    <div class="timeline-section hidden" id="timeline-section">
+        <div class="timeline-header">
+            <div class="timeline-header-left">
+                <span class="timeline-stats" id="timeline-stats">0 highlights (0:00)</span>
+                <!-- Watch mode buttons -->
+                <button id="play-all-btn" class="btn btn-primary btn-sm watch-only" onclick="startPlayAll()">
+                    Play All
+                </button>
+                <button id="stop-play-btn" class="btn btn-secondary btn-sm watch-only hidden" onclick="stopPlayAll()">
+                    Stop
+                </button>
+                <button class="btn btn-secondary btn-sm" onclick="copyForDescription()">
+                    Copy for Description
+                </button>
+            </div>
+            <div class="timeline-info">
+                <span id="timeline-zoom-label">Full length</span>
+                <span id="timeline-duration">Duration: 0:00</span>
+                <!-- Mode toggle buttons -->
+                <button class="btn btn-secondary btn-sm watch-only" onclick="setMode('edit')">
+                    Edit
+                </button>
+                <button class="btn btn-primary btn-sm edit-only" onclick="setMode('watch')">
+                    Back to Watch
+                </button>
+            </div>
+        </div>
+        <div class="timeline-scroll-container" id="timeline-scroll">
+            <div class="timeline-content" id="timeline-content">
+                <div class="timeline-wrapper">
+                    <div id="timeline" class="timeline-bar">
+                        <!-- Highlight segments populated by JS -->
+                    </div>
+                    <div id="playhead" class="playhead">
+                        <div class="playhead-handle"></div>
+                    </div>
+                </div>
+                <div id="time-labels" class="time-labels"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Toggle -->
+    <button class="shortcuts-toggle hidden" id="shortcuts-toggle" onclick="toggleShortcuts()" title="Keyboard Shortcuts">?</button>
+    <div class="shortcuts-help hidden" id="shortcuts-help">
+        <h4>Keyboard Shortcuts</h4>
+        <div class="shortcuts-grid">
+            <div><kbd>[</kbd></div><div>Set highlight start <span class="edit-only-label">(edit)</span></div>
+            <div><kbd>]</kbd></div><div>Set highlight end <span class="edit-only-label">(edit)</span></div>
+            <div><kbd>\</kbd></div><div>Cancel highlight start <span class="edit-only-label">(edit)</span></div>
+            <div><kbd>←</kbd> <kbd>→</kbd></div><div>Jump ±5 seconds</div>
+            <div><kbd>z</kbd> <kbd>x</kbd></div><div>Jump ±2 seconds</div>
+            <div><kbd>↑</kbd> <kbd>↓</kbd></div><div>Prev / Next highlight</div>
+            <div><kbd>⌘</kbd><kbd>↑</kbd> <kbd>⌘</kbd><kbd>↓</kbd></div><div>First / Last highlight</div>
+            <div><kbd>Space</kbd></div><div>Play / Pause</div>
+            <div><kbd>d</kbd></div><div>Speed +0.1x</div>
+            <div><kbd>s</kbd></div><div>Speed −0.1x</div>
+            <div><kbd>r</kbd></div><div>Toggle 1x / 2x</div>
+            <div><kbd>t</kbd></div><div>Cycle timeline: hide / full / zoom</div>
+            <div><kbd>h</kbd></div><div>Toggle highlights panel</div>
+            <div><kbd>Delete</kbd></div><div>Delete selected <span class="edit-only-label">(edit)</span></div>
+            <div><kbd>e</kbd></div><div>Enter Edit mode</div>
+            <div><kbd>Escape</kbd></div><div>Back to Watch / Deselect</div>
+        </div>
+    </div>
+
+    <!-- Highlights Tab (visible when panel hidden) -->
+    <button class="highlights-tab hidden" id="highlights-tab" onclick="toggleHighlightsPanel()">
+        Highlights (<span id="tab-highlight-count">0</span>)
+    </button>
+
+    <!-- Toast notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="js/config.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

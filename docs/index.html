@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Highlights</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="index.html" class="nav-brand">
+            <span class="logo">🎬</span>
+            <span>YouTube Highlights</span>
+        </a>
+        <div class="nav-links">
+            <a href="index.html" class="active">Home</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="hero">
+            <h1>YouTube Highlight Editor</h1>
+            <p class="subtitle">Paste a YouTube URL to watch and mark the best moments</p>
+        </div>
+
+        <div class="card" id="input-card">
+            <h2>Enter YouTube Video</h2>
+
+            <form id="youtube-form">
+                <div class="form-group">
+                    <label for="youtube-url">YouTube URL:</label>
+                    <input type="text" id="youtube-url" name="url"
+                           placeholder="https://www.youtube.com/watch?v=..."
+                           class="input-text input-large"
+                           autofocus>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block" id="youtube-btn">
+                    Go
+                </button>
+            </form>
+            <p class="hint">Paste a YouTube URL (supports youtube.com/watch?v=, youtu.be/, etc.)</p>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>Manual highlight editor for YouTube videos</p>
+    </footer>
+
+    <script>
+    const youtubeForm = document.getElementById('youtube-form');
+    const youtubeUrl = document.getElementById('youtube-url');
+
+    youtubeForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const url = youtubeUrl.value.trim();
+        if (!url) return;
+
+        // Extract video ID client-side
+        const videoId = extractVideoId(url);
+        if (!videoId) {
+            youtubeUrl.setCustomValidity('Invalid YouTube URL');
+            youtubeUrl.reportValidity();
+            return;
+        }
+
+        // Navigate directly to watch.html?v=<id>
+        window.location.href = `watch.html?v=${videoId}`;
+    });
+
+    function extractVideoId(url) {
+        // Match various YouTube URL formats
+        const patterns = [
+            /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
+            /^([a-zA-Z0-9_-]{11})$/,  // bare video ID
+        ];
+        for (const pattern of patterns) {
+            const match = url.match(pattern);
+            if (match) return match[1];
+        }
+        return null;
+    }
+    </script>
+</body>
+</html>
