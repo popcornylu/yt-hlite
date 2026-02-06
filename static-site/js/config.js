@@ -6,8 +6,8 @@ const CONFIG = {
     // Replace with your deployed worker URL:
     // - Default: https://yt-metadata.<your-subdomain>.workers.dev
     // - Custom domain: https://api.yourdomain.com
-    // WORKER_URL: 'https://yt-metadata.YOUR_SUBDOMAIN.workers.dev',
+    WORKER_URL: 'https://yt-metadata.popcorny.workers.dev',
 
-    // For local development
-    WORKER_URL: 'http://localhost:8787',
+    // For local development, uncomment this:
+    // WORKER_URL: 'http://localhost:8787',
 };
