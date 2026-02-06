@@ -6,6 +6,8 @@ Table Tennis Highlight Generator - A human-in-the-loop system for generating hig
 
 ## Quick Start
 
+### Option 1: Local Development (Flask Server)
+
 ```bash
 # Install dependencies
 pip install -r requirements.txt
@@ -15,6 +17,28 @@ python main.py
 ```
 
 Open http://127.0.0.1:5252 in browser, then paste a YouTube URL or use a local video file.
+
+### Option 2: Cloud Deployment (Static Site + Cloudflare Worker)
+
+See `DEPLOYMENT.md` for full instructions. Quick overview:
+
+```bash
+# 1. Deploy Cloudflare Worker
+cd cloudflare-worker
+wrangler login
+wrangler deploy
+wrangler secret put YOUTUBE_API_KEY
+
+# 2. Update config and deploy static site
+# Edit static-site/js/config.js with your Worker URL
+# Push static-site/ to GitHub and enable GitHub Pages
+```
+
+**Architecture:**
+```
+Static Site (GitHub Pages) → Cloudflare Worker → YouTube Data API
+       FREE                      FREE                FREE
+```
 
 ## Architecture
 
@@ -95,9 +119,21 @@ tt-highlight/
 ├── data/
 │   ├── output/               # Downloaded audio/video, compiled highlights
 │   └── feedback/             # User feedback JSON files
-├── main.py                   # Entry point
+├── static-site/              # Cloud deployment - static site
+│   ├── index.html            # Home page (URL input)
+│   ├── watch.html            # Watch/edit page
+│   ├── css/style.css         # All styles
+│   └── js/
+│       ├── config.js         # Worker URL configuration
+│       └── app.js            # Client-side application logic
+├── cloudflare-worker/        # Cloud deployment - API worker
+│   ├── worker.js             # Cloudflare Worker code
+│   ├── wrangler.toml         # Wrangler configuration
+│   └── README.md             # Worker setup instructions
+├── main.py                   # Entry point (Flask server)
 ├── requirements.txt
 ├── README.md
+├── DEPLOYMENT.md             # Cloud deployment guide
 └── CLAUDE.md                 # This file
 ```
 

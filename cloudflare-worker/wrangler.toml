@@ -1,0 +1,11 @@
+name = "yt-metadata"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Uncomment and configure after creating KV namespace:
+# [[kv_namespaces]]
+# binding = "YT_CACHE"
+# id = "<your-kv-namespace-id>"
+
+# Environment variables (set via Cloudflare dashboard or wrangler secret)
+# YOUTUBE_API_KEY - Set this as a secret via: wrangler secret put YOUTUBE_API_KEY
