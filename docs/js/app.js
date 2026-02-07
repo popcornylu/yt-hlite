@@ -163,6 +163,7 @@ function onYouTubeIframeAPIReady() {
             'modestbranding': 1,
             'rel': 0,
             'fs': 0,
+            'playsinline': 1,
             'enablejsapi': 1,
             'origin': window.location.origin
         },
@@ -196,6 +197,11 @@ function onYTPlayerReady(event) {
     // Auto-start sequential playback in watch mode
     if (mode === 'watch' && highlights.length > 0) {
         startPlayAll();
+    }
+
+    // Auto-enter fullscreen on mobile devices
+    if (isMobileDevice()) {
+        enterFullscreen();
     }
 }
 
@@ -1085,6 +1091,12 @@ function formatTimeShort(seconds) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+// ============= Mobile Detection =============
+function isMobileDevice() {
+    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+        (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+}
+
 // ============= Fullscreen =============
 function setupFullscreen() {
     const container = document.getElementById('fullscreen-container');
@@ -1157,12 +1169,14 @@ function enterFullscreen() {
     container.classList.add('is-fullscreen');
     isFullscreen = true;
 
-    if (container.requestFullscreen) {
-        container.requestFullscreen().catch(() => {}); // CSS fallback already active
-    } else if (container.webkitRequestFullscreen) {
-        container.webkitRequestFullscreen();
+    // Use native Fullscreen API on desktop only; CSS-only on mobile
+    if (!isMobileDevice()) {
+        if (container.requestFullscreen) {
+            container.requestFullscreen().catch(() => {});
+        } else if (container.webkitRequestFullscreen) {
+            container.webkitRequestFullscreen();
+        }
     }
-    // else: CSS-only fullscreen (iOS)
 
     // Trigger resize so YouTube re-evaluates video quality for the larger viewport
     setTimeout(() => {
@@ -1179,14 +1193,16 @@ function enterFullscreen() {
 
 function exitFullscreen() {
     const container = document.getElementById('fullscreen-container');
-    container.classList.remove('is-fullscreen');
-    isFullscreen = false;
 
+    // Exit native fullscreen first (if active), then clean up CSS
     if (document.fullscreenElement) {
         document.exitFullscreen();
     } else if (document.webkitFullscreenElement) {
         document.webkitExitFullscreen();
     }
+
+    container.classList.remove('is-fullscreen');
+    isFullscreen = false;
 
     // Restore YouTube player size to fit the normal container
     setTimeout(() => {

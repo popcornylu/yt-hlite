@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Watch - YouTube Highlights</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=0.4.1">
 </head>
 <body data-mode="watch">
     <nav class="navbar">
@@ -13,7 +16,7 @@
             <span>YouTube Highlights</span>
         </a>
         <div class="nav-links">
-            <button id="nav-edit-btn" class="btn btn-edit-mode watch-only" onclick="enterEditMode()">Edit</button>
+            <button id="nav-fs-btn" class="btn btn-edit-mode watch-only" onclick="toggleFullscreen()" title="Fullscreen (f)">&#x26F6; Fullscreen</button>
             <button id="nav-save-btn" class="btn btn-save edit-only" onclick="saveEdits()">Save</button>
             <button id="nav-export-btn" class="btn btn-export edit-only" onclick="openExportModal()">Export</button>
             <button id="nav-cancel-btn" class="btn btn-cancel edit-only" onclick="cancelEdits()">Cancel</button>
@@ -101,7 +104,7 @@
             <div class="timeline-header-left">
                 <span class="timeline-stats" id="timeline-stats">0 highlights (0:00)</span>
                 <button id="play-stop-btn" class="btn btn-primary btn-sm" onclick="togglePlayAll()">Play</button>
-                <button class="btn btn-sm btn-secondary" onclick="toggleFullscreen()" title="Fullscreen (f)">&#x26F6;</button>
+                <button id="timeline-edit-btn" class="btn btn-sm btn-edit-mode watch-only" onclick="enterEditMode()">Edit</button>
                 <label class="preview-toggle edit-only" title="Loop through highlights like watch mode">
                     <input type="checkbox" id="preview-checkbox" onchange="togglePreview(this.checked)">
                     Preview
@@ -178,7 +181,7 @@
     <!-- Toast notification -->
     <div id="toast" class="toast"></div>
 
-    <script src="js/config.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/config.js?v=0.4.1"></script>
+    <script src="js/app.js?v=0.4.1"></script>
 </body>
 </html>
