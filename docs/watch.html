@@ -36,16 +36,34 @@
 
         <!-- Main Layout (hidden until loaded) -->
         <div class="editor-layout hidden" id="editor-layout">
-            <!-- Video Player Section -->
-            <div class="video-section" id="video-pane">
-                <div id="youtube-player-container">
-                    <div id="youtube-player"></div>
+            <!-- Fullscreen Container -->
+            <div id="fullscreen-container" class="fullscreen-container">
+                <!-- Video Player Section -->
+                <div class="video-section" id="video-pane">
+                    <div id="youtube-player-container">
+                        <div id="youtube-player"></div>
+                        <div id="fs-click-capture" class="fs-click-capture"></div>
+                    </div>
+                    <div class="video-controls">
+                        <div class="time-display">
+                            <span id="current-time">00:00.00</span>
+                            <span class="time-separator">/</span>
+                            <span id="total-time">00:00.00</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="video-controls">
-                    <div class="time-display">
-                        <span id="current-time">00:00.00</span>
-                        <span class="time-separator">/</span>
-                        <span id="total-time">00:00.00</span>
+                <!-- Fullscreen overlay (hidden unless fullscreen) -->
+                <div id="fs-overlay" class="fs-overlay">
+                    <div class="fs-overlay-top">
+                        <span id="fs-clip-indicator" class="fs-clip-indicator"></span>
+                        <button class="fs-btn" onclick="exitFullscreen()" title="Exit fullscreen">&#x2715;</button>
+                    </div>
+                    <div class="fs-overlay-bottom">
+                        <button id="fs-play-stop-btn" class="fs-btn" onclick="togglePlayAll()">Play</button>
+                        <div class="fs-progress-bar" id="fs-progress-bar">
+                            <div id="fs-progress-fill" class="fs-progress-fill"></div>
+                        </div>
+                        <span id="fs-time-display" class="fs-time-display">0:00</span>
                     </div>
                 </div>
             </div>
@@ -83,6 +101,7 @@
             <div class="timeline-header-left">
                 <span class="timeline-stats" id="timeline-stats">0 highlights (0:00)</span>
                 <button id="play-stop-btn" class="btn btn-primary btn-sm" onclick="togglePlayAll()">Play</button>
+                <button class="btn btn-sm btn-secondary" onclick="toggleFullscreen()" title="Fullscreen (f)">&#x26F6;</button>
                 <label class="preview-toggle edit-only" title="Loop through highlights like watch mode">
                     <input type="checkbox" id="preview-checkbox" onchange="togglePreview(this.checked)">
                     Preview
@@ -125,6 +144,7 @@
             <div><kbd>s</kbd></div><div>Speed −0.1x</div>
             <div><kbd>r</kbd></div><div>Toggle 1x / 2x</div>
             <div><kbd>t</kbd></div><div>Cycle timeline: hide / full / zoom</div>
+            <div><kbd>f</kbd></div><div>Toggle fullscreen</div>
             <div><kbd>h</kbd></div><div>Toggle highlights panel</div>
             <div><kbd>Delete</kbd></div><div>Delete selected <span class="edit-only-label">(edit)</span></div>
             <div><kbd>e</kbd></div><div>Enter Edit mode</div>

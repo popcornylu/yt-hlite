@@ -35,6 +35,10 @@ let ytTimeUpdateInterval = null;
 const JUMP_LARGE = 5;
 const JUMP_SMALL = 2;
 
+// Fullscreen state
+let isFullscreen = false;
+let fsIdleTimeout = null;
+
 // ============= VideoPlayer Interface =============
 const VideoPlayer = {
     getCurrentTime() {
@@ -118,6 +122,7 @@ async function loadVideoData(videoId) {
         setupKeyboardShortcuts();
         setupPlayheadDrag();
         setupSplitter();
+        setupFullscreen();
 
         // Load YouTube IFrame API
         loadYouTubeAPI();
@@ -157,6 +162,7 @@ function onYouTubeIframeAPIReady() {
             'controls': 1,
             'modestbranding': 1,
             'rel': 0,
+            'fs': 0,
             'enablejsapi': 1,
             'origin': window.location.origin
         },
@@ -183,6 +189,7 @@ function onYTPlayerReady(event) {
             updateTimeDisplay();
             updatePlayheadPosition();
             if (isPlayingAll) onPlayAllTimeUpdate();
+            if (isFullscreen) updateFsOverlay();
         }
     }, 100);
 
@@ -267,6 +274,9 @@ function startPlayAll() {
     btn.classList.remove('btn-primary');
     btn.classList.add('btn-secondary');
 
+    const fsBtn = document.getElementById('fs-play-stop-btn');
+    if (fsBtn) fsBtn.textContent = 'Stop';
+
     playCurrentClip();
 }
 
@@ -278,6 +288,9 @@ function stopPlayAll() {
     btn.textContent = 'Play';
     btn.classList.remove('btn-secondary');
     btn.classList.add('btn-primary');
+
+    const fsBtn = document.getElementById('fs-play-stop-btn');
+    if (fsBtn) fsBtn.textContent = 'Play';
 
     // Uncheck preview checkbox
     const previewCb = document.getElementById('preview-checkbox');
@@ -646,6 +659,12 @@ function setupKeyboardShortcuts() {
                 break;
             }
 
+            case 'f':
+                if (isMeta) break;
+                e.preventDefault();
+                toggleFullscreen();
+                break;
+
             case 'h':
                 e.preventDefault();
                 toggleHighlightsPanel();
@@ -674,7 +693,9 @@ function setupKeyboardShortcuts() {
 
             case 'Escape':
                 e.preventDefault();
-                if (!document.getElementById('export-modal').classList.contains('hidden')) {
+                if (isFullscreen) {
+                    exitFullscreen();
+                } else if (!document.getElementById('export-modal').classList.contains('hidden')) {
                     closeExportModal();
                 } else if (mode === 'edit') {
                     if (selectedHighlightId !== null) {
@@ -1062,4 +1083,164 @@ function formatTimeShort(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// ============= Fullscreen =============
+function setupFullscreen() {
+    const container = document.getElementById('fullscreen-container');
+
+    // Sync state when browser exits real fullscreen (e.g. user presses Escape in native fullscreen)
+    const onFsChange = () => {
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            container.classList.remove('is-fullscreen');
+            isFullscreen = false;
+            hideFsOverlay();
+        }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+
+    // Auto-hide overlay on idle (mouse + touch)
+    const resetIdle = () => {
+        if (!isFullscreen) return;
+        showFsOverlay();
+        clearTimeout(fsIdleTimeout);
+        fsIdleTimeout = setTimeout(hideFsOverlay, 3000);
+    };
+    container.addEventListener('mousemove', resetIdle);
+    container.addEventListener('touchstart', resetIdle);
+
+    // Click-capture layer: intercepts clicks on the video in fullscreen
+    // so YouTube's own play/pause overlay doesn't show
+    const clickCapture = document.getElementById('fs-click-capture');
+    clickCapture.addEventListener('click', () => {
+        if (VideoPlayer.isPaused()) VideoPlayer.play();
+        else VideoPlayer.pause();
+    });
+
+    // Progress bar click-to-seek
+    const progressBar = document.getElementById('fs-progress-bar');
+    progressBar.addEventListener('click', (e) => {
+        if (!isFullscreen || highlights.length === 0) return;
+        const rect = progressBar.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const sorted = [...highlights].sort((a, b) => a.start_time - b.start_time);
+        const totalDur = sorted.reduce((s, h) => s + (h.end_time - h.start_time), 0);
+        const targetOffset = pct * totalDur;
+        let accum = 0;
+        for (let i = 0; i < sorted.length; i++) {
+            const clipDur = sorted[i].end_time - sorted[i].start_time;
+            if (accum + clipDur >= targetOffset) {
+                const seekTime = sorted[i].start_time + (targetOffset - accum);
+                VideoPlayer.setCurrentTime(seekTime);
+                // If playing all, update the clip index
+                if (isPlayingAll) {
+                    playAllClipIndex = i;
+                }
+                break;
+            }
+            accum += clipDur;
+        }
+    });
+}
+
+function toggleFullscreen() {
+    if (isFullscreen) {
+        exitFullscreen();
+    } else {
+        enterFullscreen();
+    }
+}
+
+function enterFullscreen() {
+    const container = document.getElementById('fullscreen-container');
+    container.classList.add('is-fullscreen');
+    isFullscreen = true;
+
+    if (container.requestFullscreen) {
+        container.requestFullscreen().catch(() => {}); // CSS fallback already active
+    } else if (container.webkitRequestFullscreen) {
+        container.webkitRequestFullscreen();
+    }
+    // else: CSS-only fullscreen (iOS)
+
+    // Trigger resize so YouTube re-evaluates video quality for the larger viewport
+    setTimeout(() => {
+        const containerEl = document.getElementById('youtube-player-container');
+        if (ytPlayer && ytPlayerReady && containerEl) {
+            ytPlayer.setSize(containerEl.clientWidth, containerEl.clientHeight);
+        }
+    }, 100);
+
+    showFsOverlay();
+    clearTimeout(fsIdleTimeout);
+    fsIdleTimeout = setTimeout(hideFsOverlay, 3000);
+}
+
+function exitFullscreen() {
+    const container = document.getElementById('fullscreen-container');
+    container.classList.remove('is-fullscreen');
+    isFullscreen = false;
+
+    if (document.fullscreenElement) {
+        document.exitFullscreen();
+    } else if (document.webkitFullscreenElement) {
+        document.webkitExitFullscreen();
+    }
+
+    // Restore YouTube player size to fit the normal container
+    setTimeout(() => {
+        const containerEl = document.getElementById('youtube-player-container');
+        if (ytPlayer && ytPlayerReady && containerEl) {
+            ytPlayer.setSize(containerEl.clientWidth, containerEl.clientHeight);
+        }
+    }, 100);
+
+    hideFsOverlay();
+}
+
+function showFsOverlay() {
+    const overlay = document.getElementById('fs-overlay');
+    if (overlay) overlay.classList.add('visible');
+}
+
+function hideFsOverlay() {
+    const overlay = document.getElementById('fs-overlay');
+    if (overlay) overlay.classList.remove('visible');
+}
+
+function updateFsOverlay() {
+    const indicator = document.getElementById('fs-clip-indicator');
+    const progressFill = document.getElementById('fs-progress-fill');
+    const timeDisplay = document.getElementById('fs-time-display');
+
+    if (!indicator || !progressFill || !timeDisplay) return;
+
+    const sorted = [...highlights].sort((a, b) => a.start_time - b.start_time);
+    const totalDur = sorted.reduce((s, h) => s + (h.end_time - h.start_time), 0);
+    const currentTime = VideoPlayer.getCurrentTime();
+
+    if (isPlayingAll && playAllClipIndex < playAllClips.length) {
+        const clip = playAllClips[playAllClipIndex];
+        indicator.textContent = `Highlight ${playAllClipIndex + 1} / ${playAllClips.length}  (${formatTimeShort(clip.start_time)} - ${formatTimeShort(clip.end_time)})`;
+    } else {
+        indicator.textContent = `${highlights.length} highlight${highlights.length !== 1 ? 's' : ''}`;
+    }
+
+    // Progress: compute elapsed time across all clips up to current playback position
+    let elapsed = 0;
+    for (const h of sorted) {
+        if (currentTime >= h.end_time) {
+            elapsed += h.end_time - h.start_time;
+        } else if (currentTime >= h.start_time) {
+            elapsed += currentTime - h.start_time;
+            break;
+        } else {
+            break;
+        }
+    }
+    const pct = totalDur > 0 ? (elapsed / totalDur) * 100 : 0;
+    progressFill.style.width = `${Math.min(100, pct)}%`;
+
+    timeDisplay.textContent = formatTimeShort(currentTime);
 }
