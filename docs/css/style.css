@@ -403,7 +403,6 @@ html.watch-page, html.watch-page body {
 /* Video Section - fills left pane */
 .video-section {
     flex: 1;
-    min-width: 200px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1027,9 +1026,14 @@ html.watch-page, html.watch-page body {
 /* Fullscreen Mode                               */
 /* ============================================= */
 
-/* Normal mode — container is transparent */
+/* Normal mode — proper flex child wrapping video + overlay */
 .fullscreen-container {
-    display: contents;
+    flex: 1;
+    min-width: 200px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
 }
 
 .fs-overlay {

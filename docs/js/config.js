@@ -2,6 +2,8 @@
 // Update this URL after deploying your Cloudflare Worker
 
 const CONFIG = {
+    VERSION: '0.4.1',
+
     // Cloudflare Worker URL for fetching YouTube metadata
     // Replace with your deployed worker URL:
     // - Default: https://yt-metadata.<your-subdomain>.workers.dev
