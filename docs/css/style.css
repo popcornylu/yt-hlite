@@ -1023,6 +1023,150 @@ html.watch-page, html.watch-page body {
     border-top: 1px solid var(--gray-200);
 }
 
+/* ============================================= */
+/* Fullscreen Mode                               */
+/* ============================================= */
+
+/* Normal mode — container is transparent */
+.fullscreen-container {
+    display: contents;
+}
+
+.fs-overlay {
+    display: none;
+}
+
+/* Fullscreen mode — triggered by .is-fullscreen class */
+.fullscreen-container.is-fullscreen {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #000;
+}
+
+.fullscreen-container.is-fullscreen .video-section {
+    flex: 1;
+    min-height: 0;
+}
+
+.fullscreen-container.is-fullscreen .video-controls {
+    display: none;
+}
+
+/* Click-capture layer: blocks YouTube's own controls/overlays in fullscreen */
+.fs-click-capture {
+    display: none;
+}
+
+.fullscreen-container.is-fullscreen .fs-click-capture {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    cursor: pointer;
+}
+
+/* Overlay — only visible in fullscreen */
+.fullscreen-container.is-fullscreen .fs-overlay {
+    display: block;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 10000;
+}
+
+.fullscreen-container.is-fullscreen .fs-overlay.visible {
+    opacity: 1;
+}
+
+/* Top bar */
+.fs-overlay-top {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
+    pointer-events: auto;
+}
+
+/* Bottom bar */
+.fs-overlay-bottom {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%);
+    pointer-events: auto;
+}
+
+/* Clip indicator */
+.fs-clip-indicator {
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+/* Fullscreen buttons — touch-friendly */
+.fs-btn {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+
+.fs-btn:hover {
+    background: rgba(255,255,255,0.35);
+}
+
+/* Progress bar */
+.fs-progress-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.25);
+    border-radius: 3px;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.fs-progress-fill {
+    height: 100%;
+    background: #28a745;
+    border-radius: 3px;
+    transition: width 0.15s linear;
+    width: 0;
+}
+
+/* Time display */
+.fs-time-display {
+    color: #fff;
+    font-family: monospace;
+    font-size: 0.85rem;
+    min-width: 40px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
 /* No-select during splitter drag */
 .no-select {
     user-select: none;
