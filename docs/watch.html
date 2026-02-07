@@ -13,8 +13,10 @@
             <span>YouTube Highlights</span>
         </a>
         <div class="nav-links">
-            <a href="index.html">Home</a>
-            <a href="#" class="active">Watch</a>
+            <button id="nav-edit-btn" class="btn btn-edit-mode watch-only" onclick="enterEditMode()">Edit</button>
+            <button id="nav-save-btn" class="btn btn-save edit-only" onclick="saveEdits()">Save</button>
+            <button id="nav-export-btn" class="btn btn-export edit-only" onclick="openExportModal()">Export</button>
+            <button id="nav-cancel-btn" class="btn btn-cancel edit-only" onclick="cancelEdits()">Cancel</button>
         </div>
     </nav>
 
@@ -70,7 +72,7 @@
             <div class="empty-overlay-content">
                 <h2>No highlights found for this video</h2>
                 <p>The video description doesn't contain any highlights.</p>
-                <button class="btn btn-primary btn-large" onclick="setMode('edit')">Enter Edit Mode</button>
+                <button class="btn btn-primary btn-large" onclick="enterEditMode()">Enter Edit Mode</button>
             </div>
         </div>
     </main>
@@ -80,27 +82,15 @@
         <div class="timeline-header">
             <div class="timeline-header-left">
                 <span class="timeline-stats" id="timeline-stats">0 highlights (0:00)</span>
-                <!-- Watch mode buttons -->
-                <button id="play-all-btn" class="btn btn-primary btn-sm watch-only" onclick="startPlayAll()">
-                    Play All
-                </button>
-                <button id="stop-play-btn" class="btn btn-secondary btn-sm watch-only hidden" onclick="stopPlayAll()">
-                    Stop
-                </button>
-                <button class="btn btn-secondary btn-sm" onclick="copyForDescription()">
-                    Copy for Description
-                </button>
+                <button id="play-stop-btn" class="btn btn-primary btn-sm" onclick="togglePlayAll()">Play</button>
+                <label class="preview-toggle edit-only" title="Loop through highlights like watch mode">
+                    <input type="checkbox" id="preview-checkbox" onchange="togglePreview(this.checked)">
+                    Preview
+                </label>
             </div>
             <div class="timeline-info">
                 <span id="timeline-zoom-label">Full length</span>
                 <span id="timeline-duration">Duration: 0:00</span>
-                <!-- Mode toggle buttons -->
-                <button class="btn btn-secondary btn-sm watch-only" onclick="setMode('edit')">
-                    Edit
-                </button>
-                <button class="btn btn-primary btn-sm edit-only" onclick="setMode('watch')">
-                    Back to Watch
-                </button>
             </div>
         </div>
         <div class="timeline-scroll-container" id="timeline-scroll">
@@ -146,6 +136,24 @@
     <button class="highlights-tab hidden" id="highlights-tab" onclick="toggleHighlightsPanel()">
         Highlights (<span id="tab-highlight-count">0</span>)
     </button>
+
+    <!-- Export Modal -->
+    <div class="modal-overlay hidden" id="export-modal" onclick="if(event.target===this)closeExportModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Export Highlights</h3>
+                <button class="modal-close" onclick="closeExportModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <a id="export-watch-url" href="#" target="_blank" class="export-url"></a>
+                <textarea id="export-textarea" class="export-textarea" readonly rows="10"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="copyExportText()">Copy to Clipboard</button>
+                <button class="btn btn-secondary" onclick="closeExportModal()">Close</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Toast notification -->
     <div id="toast" class="toast"></div>

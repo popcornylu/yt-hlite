@@ -9,6 +9,9 @@ let recordingStart = null;
 let mode = 'watch';
 let highlightCounter = 0;
 
+// Edit mode snapshot (for Cancel to restore)
+let originalHighlights = [];
+
 // Sequential playback state
 let isPlayingAll = false;
 let playAllClipIndex = 0;
@@ -206,8 +209,8 @@ function setMode(newMode) {
         overlay.classList.add('hidden');
     }
 
-    // Stop sequential playback when leaving watch mode
-    if (mode === 'edit' && isPlayingAll) {
+    // Stop sequential playback when switching modes
+    if (isPlayingAll) {
         stopPlayAll();
     }
 
@@ -216,11 +219,42 @@ function setMode(newMode) {
         cancelRecording();
     }
 
+    // Reset preview checkbox on mode switch
+    const previewCb = document.getElementById('preview-checkbox');
+    if (previewCb) previewCb.checked = false;
+
     renderHighlights();
     renderTimeline();
 }
 
-// ============= Sequential Playback (Watch Mode) =============
+function enterEditMode() {
+    originalHighlights = highlights.map(h => ({ ...h }));
+    setMode('edit');
+}
+
+function saveEdits() {
+    originalHighlights = [];
+    setMode('watch');
+    showToast('Highlights saved');
+}
+
+function cancelEdits() {
+    highlights = originalHighlights.map(h => ({ ...h }));
+    originalHighlights = [];
+    setMode('watch');
+    showToast('Edits discarded');
+    updateStats();
+}
+
+// ============= Sequential Playback =============
+function togglePlayAll() {
+    if (isPlayingAll) {
+        stopPlayAll();
+    } else {
+        startPlayAll();
+    }
+}
+
 function startPlayAll() {
     if (highlights.length === 0) return;
 
@@ -228,8 +262,10 @@ function startPlayAll() {
     playAllClipIndex = 0;
     isPlayingAll = true;
 
-    document.getElementById('play-all-btn').classList.add('hidden');
-    document.getElementById('stop-play-btn').classList.remove('hidden');
+    const btn = document.getElementById('play-stop-btn');
+    btn.textContent = 'Stop';
+    btn.classList.remove('btn-primary');
+    btn.classList.add('btn-secondary');
 
     playCurrentClip();
 }
@@ -238,8 +274,14 @@ function stopPlayAll() {
     isPlayingAll = false;
     VideoPlayer.pause();
 
-    document.getElementById('play-all-btn').classList.remove('hidden');
-    document.getElementById('stop-play-btn').classList.add('hidden');
+    const btn = document.getElementById('play-stop-btn');
+    btn.textContent = 'Play';
+    btn.classList.remove('btn-secondary');
+    btn.classList.add('btn-primary');
+
+    // Uncheck preview checkbox
+    const previewCb = document.getElementById('preview-checkbox');
+    if (previewCb) previewCb.checked = false;
 
     // Clear playing state
     document.querySelectorAll('.highlight-item').forEach(el => el.classList.remove('playing'));
@@ -292,15 +334,10 @@ function onPlayAllTimeUpdate() {
     }
 }
 
-// ============= Copy for Description =============
-async function copyForDescription() {
-    if (highlights.length === 0) {
-        showToast('No highlights to export');
-        return;
-    }
-
+// ============= Export =============
+function buildDescriptionText() {
     const sorted = [...highlights].sort((a, b) => a.start_time - b.start_time);
-    const watchUrl = `${window.location.origin}${window.location.pathname}?v=${youtubeVideoId}`;
+    const watchUrl = `https://popcornylu.github.io/yt-hlite/watch.html?v=${youtubeVideoId}`;
 
     let lines = [watchUrl, '', '[Highlights]'];
     for (const h of sorted) {
@@ -308,13 +345,43 @@ async function copyForDescription() {
         const end = formatTimestampForDescription(h.end_time);
         lines.push(`${start} - ${end}`);
     }
+    return lines.join('\n');
+}
 
-    const text = lines.join('\n');
+function openExportModal() {
+    if (highlights.length === 0) {
+        showToast('No highlights to export');
+        return;
+    }
+
+    const watchUrl = `https://popcornylu.github.io/yt-hlite/watch.html?v=${youtubeVideoId}`;
+    const urlEl = document.getElementById('export-watch-url');
+    urlEl.href = watchUrl;
+    urlEl.textContent = watchUrl;
+
+    document.getElementById('export-textarea').value = buildDescriptionText();
+    document.getElementById('export-modal').classList.remove('hidden');
+}
+
+function closeExportModal() {
+    document.getElementById('export-modal').classList.add('hidden');
+}
+
+async function copyExportText() {
+    const text = document.getElementById('export-textarea').value;
     try {
         await navigator.clipboard.writeText(text);
-        showToast(`Copied ${sorted.length} highlights for description`);
+        showToast('Copied to clipboard');
     } catch (e) {
         showToast('Failed to copy to clipboard');
+    }
+}
+
+function togglePreview(checked) {
+    if (checked) {
+        startPlayAll();
+    } else {
+        stopPlayAll();
     }
 }
 
@@ -601,17 +668,19 @@ function setupKeyboardShortcuts() {
                 if (isMeta) break;
                 if (mode === 'watch') {
                     e.preventDefault();
-                    setMode('edit');
+                    enterEditMode();
                 }
                 break;
 
             case 'Escape':
                 e.preventDefault();
-                if (mode === 'edit') {
+                if (!document.getElementById('export-modal').classList.contains('hidden')) {
+                    closeExportModal();
+                } else if (mode === 'edit') {
                     if (selectedHighlightId !== null) {
                         deselectHighlight();
                     } else {
-                        setMode('watch');
+                        cancelEdits();
                     }
                 } else {
                     deselectHighlight();
