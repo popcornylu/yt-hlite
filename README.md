@@ -12,6 +12,8 @@ No installation required. Just paste a YouTube URL and start editing highlights.
 
 - **Watch Mode**: Auto-plays highlights sequentially from the video description
 - **Edit Mode**: Mark highlights with `[` / `]` bracket keys at current playback position
+- **Fullscreen**: Full-screen highlight playback with overlay, auto-enters on mobile
+- **Draft Persistence**: Edit-mode changes auto-saved to localStorage and restored on reload
 - **Timeline**: Visual timeline with highlight segments, playhead scrubbing, and zoom
 - **Keyboard-Driven**: Full keyboard shortcut support for fast editing
 - **Export**: Copy highlights to clipboard in YouTube description format
@@ -55,13 +57,15 @@ Static Site (GitHub Pages) → Cloudflare Worker → YouTube Data API
 | `←/→` | Jump ±5 seconds |
 | `z/x` | Jump ±2 seconds |
 | `↑/↓` | Prev/Next highlight |
+| `⌘↑/⌘↓` | First/Last highlight |
 | `Space` | Play/Pause |
 | `d/s` | Speed +/- 0.1x |
 | `r` | Toggle 1x/2x speed |
+| `f` | Toggle fullscreen |
 | `h` | Toggle highlights panel |
 | `t` | Cycle timeline visibility |
 | `e` | Enter edit mode |
-| `Escape` | Back to watch / deselect |
+| `Escape` | Back to watch / deselect / exit fullscreen |
 | `Delete` | Delete selected highlight |
 
 ## Deployment

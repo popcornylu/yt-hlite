@@ -4,251 +4,135 @@
 
 YouTube Highlight Editor - A web app for watching and editing highlights in YouTube videos. Highlights are stored in the YouTube video description using a simple text format.
 
-## Live Site
-
-**https://popcornylu.github.io/yt-hlite/** - No installation required.
+**Live Site:** https://popcornylu.github.io/yt-hlite/
 
 ## Quick Start
 
-### Static Site (Local Dev)
-
 ```bash
-cd docs
-python -m http.server 5252
+cd docs && python -m http.server 5252    # Static site at http://localhost:5252
+cd cloudflare-worker && wrangler dev     # Worker at http://localhost:8787
 ```
 
-Open http://localhost:5252 in browser, then paste a YouTube URL.
+Update `docs/js/config.js` to point to local worker for dev. See `DEPLOYMENT.md` for full deployment.
 
-### Cloudflare Worker (Local Dev)
-
-```bash
-cd cloudflare-worker
-wrangler dev
-```
-
-Update `docs/js/config.js` to point to `http://localhost:8787` for local worker.
-
-### Full Deployment
-
-See `DEPLOYMENT.md` for complete instructions.
-
-**Production URLs:**
-- **Site:** https://popcornylu.github.io/yt-hlite/
-- **Worker:** https://yt-metadata.popcorny.workers.dev
+**Production:** Site → https://popcornylu.github.io/yt-hlite/ | Worker → https://yt-metadata.popcorny.workers.dev
 
 ## Architecture
 
-Two-page static site with a Cloudflare Worker for YouTube API proxy.
+Two-page static site (GitHub Pages) + Cloudflare Worker (YouTube API proxy). No build step, no framework.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         WORKFLOW                                │
-│                                                                 │
-│  1. Creator edits highlights, copies to YouTube description     │
-│  2. Viewer opens /watch?v=<id> → highlights parsed from desc   │
-│  3. Watch mode: auto-plays highlights sequentially              │
-│  4. Edit mode: bracket recording, delete                        │
-│  5. Export: "Copy for Description" → clipboard                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                  Static Site (GitHub Pages)                      │
-│                                                                 │
-│  ┌──────────────┐    ┌────────────────────────────────────────┐ │
-│  │  /           │ →  │  /watch?v=<id>                        │ │
-│  │  URL input   │    │  ┌─────────────┬────────────────────┐ │ │
-│  │ (index.html) │    │  │ Watch mode  │ Edit mode          │ │ │
-│  └──────────────┘    │  │ (read-only, │ (bracket record,   │ │ │
-│                      │  │  auto-play) │  delete)            │ │ │
-│                      │  └─────────────┴────────────────────┘ │ │
-│                      │  (watch.html + app.js)                 │ │
-│                      └────────────────────────────────────────┘ │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │
-                    fetch /api/yt-metadata?v=<id>
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│               Cloudflare Worker (yt-metadata)                   │
-│                                                                 │
-│  - Proxies YouTube Data API v3                                  │
-│  - Returns title, description, parsed highlights                │
-│  - Optional KV caching (1 hour TTL)                             │
-│  - CORS headers for cross-origin access                         │
-└─────────────────────────────────────────────────────────────────┘
-```
+- `index.html` — URL input → extracts video ID → navigates to `watch.html?v=<id>`
+- `watch.html` + `app.js` (~1300 lines) — Player, highlight CRUD, playback, timeline, fullscreen
+- `cloudflare-worker/worker.js` — Proxies YouTube Data API v3, parses `[Highlights]` from description, optional KV caching (1hr TTL)
 
 ## File Structure
 
 ```
-yt-hlite/
-├── docs/                     # Static site (GitHub Pages)
-│   ├── index.html            # Home page (URL input)
-│   ├── watch.html            # Watch/edit page
-│   ├── css/style.css         # All styles
-│   ├── js/
-│   │   ├── config.js         # Worker URL configuration
-│   │   └── app.js            # Client-side application logic (~1000 lines)
-│   └── README.md             # Static site docs
-├── cloudflare-worker/        # YouTube metadata API proxy
-│   ├── worker.js             # Cloudflare Worker code
-│   ├── wrangler.toml         # Wrangler configuration
-│   └── README.md             # Worker setup instructions
-├── CLAUDE.md                 # This file
-├── DEPLOYMENT.md             # Full deployment guide
-└── README.md                 # Project README
+docs/index.html            # Home page (URL input, video ID regex extraction)
+docs/watch.html            # Watch/edit page (player, sidebar, timeline, modals)
+docs/css/style.css         # All styles (~1200 lines)
+docs/js/config.js          # Worker URL + version
+docs/js/app.js             # All client-side logic (~1300 lines)
+cloudflare-worker/worker.js  # YouTube API proxy + highlight parser
 ```
 
-## Key Components
+## Features
 
-### Static Site (`docs/`)
+### Watch Mode (default on page load)
+- Auto-plays highlights sequentially (Play All / Stop controls)
+- Read-only sidebar with highlight list, active clip highlighted
+- Fullscreen overlay with progress bar; auto-enters on mobile
 
-#### `index.html` - Home Page
-- YouTube URL input form
-- Client-side video ID extraction (regex)
-- Navigates to `watch.html?v=<id>`
+### Edit Mode (via Edit button or `e` key)
+- Bracket recording: `[` sets start, `]` sets end at current playback position
+- Delete highlights (× button or `Delete` key)
+- Overlap validation (prevents overlapping highlights)
+- Done → saves and returns to watch mode; Cancel → discards changes
+- Draft persistence: auto-saves to localStorage on every edit; restored on reload
 
-#### `watch.html` - Watch/Edit Page
-- YouTube IFrame player
-- Draggable splitter between video and highlights panel
-- Timeline with segments and playhead
-- Loading/error/empty states
-- Keyboard shortcuts help panel
-
-#### `app.js` - Application Logic (~1000 lines)
-- `VideoPlayer` interface wrapping YouTube IFrame API
-- Highlight CRUD (all client-side, no server calls for editing)
-- Sequential playback (watch mode)
-- Bracket recording (`[` start, `]` end)
-- Timeline rendering and zoom
-- Splitter drag
-- Keyboard shortcuts
-- Copy for Description export
-
-#### `config.js` - Configuration
-```javascript
-const CONFIG = {
-    WORKER_URL: 'https://yt-metadata.popcorny.workers.dev',
-};
-```
-
-### Cloudflare Worker (`cloudflare-worker/`)
-
-#### `worker.js` - YouTube Metadata Proxy
-- Single endpoint: `GET /api/yt-metadata?v=<videoId>`
-- Fetches from YouTube Data API v3 (requires `YOUTUBE_API_KEY` secret)
-- Parses `[Highlights]` section from description
-- Optional KV caching (`YT_CACHE` namespace)
-- Returns: `{ videoId, title, description, highlights, channelTitle, publishedAt }`
-
-## Web UI Features
-
-### Watch Mode (default when highlights exist)
-- **Auto-play**: Highlights play sequentially on page load
-- **Read-only sidebar**: Shows highlight list, active clip highlighted
-- **Play All / Stop** controls
-
-### Edit Mode (default when no highlights)
-- **Bracket recording**: `[` starts, `]` ends a highlight at current playback position
-- **Delete**: Remove individual highlights (× button)
-- **Copy for Description**: Export watch URL + highlights to clipboard
+### Export
+- Export modal with watch URL + `[Highlights]` formatted text
+- Copy to clipboard button; preview toggle for playback
 
 ### Keyboard Shortcuts
-- `e` - Enter edit mode
-- `Escape` - Return to watch mode / deselect
-- `[` / `]` - Start/end bracket (edit mode)
-- `\` - Cancel in-progress bracket
-- `←/→` - Jump ±5 seconds
-- `z/x` - Jump ±2 seconds
-- `↑/↓` - Prev / Next highlight
-- `⌘↑/⌘↓` - First / Last highlight
-- `Space` - Play/Pause
-- `d/s` - Speed +/- 0.1x
-- `r` - Toggle 1x/2x
-- `h` - Toggle highlights panel
-- `t` - Cycle timeline visibility
-- `Delete` - Delete selected highlight (edit mode)
+- `e` — Enter edit mode | `Escape` — Watch mode / deselect / exit fullscreen
+- `[` / `]` — Start/end bracket | `\` — Cancel bracket
+- `←/→` — Jump ±5s | `z/x` — Jump ±2s
+- `↑/↓` — Prev/Next highlight | `⌘↑/⌘↓` — First/Last highlight
+- `Space` — Play/Pause | `d/s` — Speed ±0.1x | `r` — Toggle 1x/2x
+- `f` — Fullscreen | `h` — Toggle sidebar | `t` — Cycle timeline zoom
+- `Delete` — Delete selected highlight (edit mode)
 
 ## State Management
 
-The app is **fully stateless on the server side**. All state is client-side in `app.js`:
+All state is client-side in `app.js` module scope. Server is stateless.
 
-```javascript
-// Core state (in app.js)
-let highlights = [];           // Array of highlight objects
-let selectedHighlightId = null;
-let recordingStart = null;     // Bracket recording in progress
-let mode = 'watch';            // 'watch' | 'edit'
-let highlightCounter = 0;      // For generating unique IDs
-
-// Playback state
-let isPlayingAll = false;
-let playAllClipIndex = 0;
-let playAllClips = [];
-```
+**Core state:** `highlights[]`, `selectedHighlightId`, `recordingStart`, `mode` ('watch'|'edit'), `highlightCounter`
+**Playback:** `isPlayingAll`, `playAllClipIndex`, `playAllClips[]`
+**UI:** `isFullscreen`, `highlightsPanelVisible`, `currentZoomMode`, `pixelsPerSecond`
 
 ### Highlight Object
 ```javascript
-{
-    id: 'desc_1' | 'manual_1',     // Unique ID
-    start_time: 20.0,               // Seconds
-    end_time: 25.0,                 // Seconds
-    duration: 5.0,                   // Computed
-    source: 'description' | 'manual',
-    label: null,
-}
+{ id: 'desc_1'|'manual_1', start_time: 20.0, end_time: 25.0, duration: 5.0, source: 'description'|'manual', label: null }
 ```
+
+### Draft Persistence
+- Key: `yt-hlite-draft-{videoId}` in localStorage
+- Stores: `{ highlights, highlightCounter }`
+- Auto-saves on every add/update/delete in edit mode
+- Restored on page load → enters edit mode with toast; cleared by Done/Cancel
+
+### VideoPlayer Interface
+Wraps YouTube IFrame API: `getCurrentTime()`, `setCurrentTime(t)`, `play()`, `pause()`, `isPaused()`, `getDuration()`, `getPlaybackRate()`, `setPlaybackRate(r)`. Returns safe defaults when player not ready.
 
 ## API
 
-### Cloudflare Worker Endpoint
+**Endpoint:** `GET /api/yt-metadata?v=<videoId>`
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/yt-metadata?v=<id>` | GET | Fetch YouTube video metadata + parsed highlights |
-
-### Response Format
+**Response:**
 ```json
-{
-    "videoId": "abc123def45",
-    "title": "Video Title",
-    "description": "Full description text...",
-    "highlights": [
-        { "start_time": 20, "end_time": 25 },
-        { "start_time": 36, "end_time": 38 }
-    ],
-    "channelTitle": "Channel Name",
-    "publishedAt": "2024-01-01T00:00:00Z"
-}
+{ "videoId": "...", "title": "...", "description": "...", "highlights": [{"start_time": 20, "end_time": 25}], "channelTitle": "...", "publishedAt": "..." }
 ```
 
-## YouTube URL Parsing
-
-Supported URL formats (client-side regex in `index.html`):
-- `https://www.youtube.com/watch?v=VIDEO_ID`
-- `https://youtu.be/VIDEO_ID`
-- `https://www.youtube.com/embed/VIDEO_ID`
-- `https://www.youtube.com/v/VIDEO_ID`
-- Bare 11-character video ID
+**Errors:** 404 (not found), 502 (YouTube API error), 500 (internal)
 
 ## Export Format
 
-### Copy for Description (clipboard)
 ```
 https://popcornylu.github.io/yt-hlite/watch.html?v=VIDEO_ID
 
 [Highlights]
 0:20 - 0:25
 0:36 - 0:38
-1:15 - 1:22
 ```
+
+## URL Parsing (index.html)
+
+Supported: `youtube.com/watch?v=ID`, `youtu.be/ID`, `youtube.com/embed/ID`, `youtube.com/v/ID`, bare 11-char ID
+
+## Key app.js Sections (by line region)
+
+| Region | Section |
+|--------|---------|
+| 1-40 | State variables and constants |
+| 42-74 | VideoPlayer interface |
+| 76-158 | Initialization + loadVideoData (fetch + draft restore) |
+| 160-220 | YouTube IFrame API setup |
+| 222-272 | Mode management (setMode, enterEdit, save, cancel) |
+| 274-367 | Sequential playback |
+| 368-428 | Export modal and clipboard |
+| 430-505 | Splitter drag + timeline zoom |
+| 506-570 | Toast notifications + draft persistence |
+| 572-616 | Speed indicator + panel toggles |
+| 617-770 | Keyboard shortcuts |
+| 771-944 | Highlight CRUD (bracket record, create, update, delete, select) |
+| 945-1132 | Rendering (highlights list, timeline, playhead, time display) |
+| 1133-1152 | Time formatting + mobile detection |
+| 1154-1316 | Fullscreen mode |
 
 ## Notes
 
-- **Two-page architecture**: `index.html` (URL input) → `watch.html?v=<id>` (watch + edit)
-- **Fully client-side editing**: No server calls for CRUD — highlights managed in JS array
-- **Stateless**: Highlights parsed from YouTube description on each load via Worker
-- **YouTube iframe seek precision** ~0.5s (acceptable for highlights)
 - **No build step**: Plain HTML/CSS/JS, no bundler or framework
+- **YouTube iframe seek precision** ~0.5s (acceptable for highlights)
+- **Mobile**: Auto-enters fullscreen on player ready; CSS-only fullscreen (no native API)
+- **Overlap prevention**: `wouldOverlap()` validates before creating/updating highlights
