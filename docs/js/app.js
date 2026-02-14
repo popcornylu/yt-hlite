@@ -98,7 +98,7 @@ async function loadVideoData(videoId) {
         document.title = `${data.title} - YouTube Highlights`;
 
         // Load highlights from description
-        highlights = data.highlights.map((h, i) => ({
+        const apiHighlights = data.highlights.map((h, i) => ({
             id: `desc_${i + 1}`,
             start_time: h.start_time,
             end_time: h.end_time,
@@ -106,10 +106,20 @@ async function loadVideoData(videoId) {
             source: 'description',
             label: null,
         }));
-        highlightCounter = highlights.length;
 
-        // Determine initial mode based on highlights
-        mode = highlights.length > 0 ? 'watch' : 'edit';
+        // Check for a saved draft
+        const draft = loadDraft();
+        if (draft) {
+            highlights = draft.highlights;
+            highlightCounter = draft.highlightCounter;
+            originalHighlights = apiHighlights.map(h => ({ ...h }));
+            mode = 'edit';
+            setTimeout(() => showToast('Draft restored'), 500);
+        } else {
+            highlights = apiHighlights;
+            highlightCounter = highlights.length;
+            mode = 'watch';
+        }
 
         // Hide loading, show UI
         document.getElementById('loading-state').classList.add('hidden');
@@ -247,13 +257,15 @@ function enterEditMode() {
 
 function saveEdits() {
     originalHighlights = [];
+    clearDraft();
     setMode('watch');
-    showToast('Highlights saved');
+    showToast('Done editing');
 }
 
 function cancelEdits() {
     highlights = originalHighlights.map(h => ({ ...h }));
     originalHighlights = [];
+    clearDraft();
     setMode('watch');
     showToast('Edits discarded');
     updateStats();
@@ -516,6 +528,45 @@ function startRecordingToast() {
     };
     update();
     toastInterval = setInterval(update, 100);
+}
+
+// ============= Draft Persistence =============
+function getDraftKey() {
+    return `yt-hlite-draft-${youtubeVideoId}`;
+}
+
+function saveDraft() {
+    if (mode !== 'edit') return;
+    try {
+        localStorage.setItem(getDraftKey(), JSON.stringify({
+            highlights: highlights,
+            highlightCounter: highlightCounter,
+        }));
+    } catch (e) {
+        // localStorage may be full or unavailable
+    }
+}
+
+function clearDraft() {
+    try {
+        localStorage.removeItem(getDraftKey());
+    } catch (e) {
+        // ignore
+    }
+}
+
+function loadDraft() {
+    try {
+        const raw = localStorage.getItem(getDraftKey());
+        if (!raw) return null;
+        const draft = JSON.parse(raw);
+        if (draft && Array.isArray(draft.highlights) && typeof draft.highlightCounter === 'number') {
+            return draft;
+        }
+    } catch (e) {
+        // invalid draft
+    }
+    return null;
 }
 
 // ============= Speed Indicator =============
@@ -809,6 +860,7 @@ function createHighlight(start, end) {
     renderHighlights();
     renderTimeline();
     updateStats();
+    saveDraft();
 }
 
 function updateHighlight(id, updates) {
@@ -822,6 +874,7 @@ function updateHighlight(id, updates) {
     renderHighlights();
     renderTimeline();
     updateStats();
+    saveDraft();
 }
 
 function deleteHighlight(id) {
@@ -832,6 +885,7 @@ function deleteHighlight(id) {
     renderHighlights();
     renderTimeline();
     updateStats();
+    saveDraft();
 }
 
 function deleteSelectedHighlight() {
