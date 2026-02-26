@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(find:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(chmod +x:*)",
+      "WebFetch(domain:yt-metadata.popcorny.workers.dev)",
+      "Bash(test:*)",
+      "Bash(yt-dlp:*)",
+      "Bash(python3:*)"
     ]
   }
 }
